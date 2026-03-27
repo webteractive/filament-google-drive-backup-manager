@@ -1,0 +1,80 @@
+{
+    "name": "webteractive/filament-google-drive-backup-manager",
+    "description": "A Filament plugin for managing Google Drive backups in Laravel",
+    "keywords": [
+        "webteractive",
+        "laravel",
+        "filament",
+        "google-drive",
+        "backup",
+        "spatie-backup"
+    ],
+    "homepage": "https://github.com/webteractive/filament-google-drive-backup-manager",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Glen Bangkila",
+            "email": "hadeinvane@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "calebporzio/sushi": "^2.5",
+        "filament/filament": "^4.0||^5.0",
+        "illuminate/contracts": "^11.0||^12.0",
+        "laravel/socialite": "^5.26",
+        "masbug/flysystem-google-drive-ext": "^2.3",
+        "spatie/laravel-backup": "^9.0||^10.0",
+        "spatie/laravel-package-tools": "^1.16"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.14",
+        "nunomaduro/collision": "^8.8",
+        "larastan/larastan": "^3.0",
+        "orchestra/testbench": "^10.0.0||^9.0.0",
+        "pestphp/pest": "^4.0",
+        "pestphp/pest-plugin-arch": "^4.0",
+        "pestphp/pest-plugin-laravel": "^4.0",
+        "phpstan/extension-installer": "^1.4",
+        "phpstan/phpstan-deprecation-rules": "^2.0",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "spatie/laravel-ray": "^1.35"
+    },
+    "autoload": {
+        "psr-4": {
+            "Webteractive\\GoogleDriveBackupManager\\": "src/",
+            "Webteractive\\GoogleDriveBackupManager\\Database\\Factories\\": "database/factories/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Webteractive\\GoogleDriveBackupManager\\Tests\\": "tests/",
+            "Workbench\\App\\": "workbench/app/"
+        }
+    },
+    "scripts": {
+        "post-autoload-dump": "@composer run prepare",
+        "prepare": "@php vendor/bin/testbench package:discover --ansi",
+        "analyse": "vendor/bin/phpstan analyse",
+        "test": "vendor/bin/pest",
+        "test-coverage": "vendor/bin/pest --coverage",
+        "format": "vendor/bin/pint"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "phpstan/extension-installer": true
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Webteractive\\GoogleDriveBackupManager\\GoogleDriveBackupManagerServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

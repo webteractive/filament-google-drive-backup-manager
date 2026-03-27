@@ -136,6 +136,19 @@ return [
 ];
 ```
 
+## Scheduling Backups
+
+This plugin provides an on-demand UI for triggering backups, but does **not** schedule them automatically. To run backups on a schedule, add the Spatie backup commands to your application's `routes/console.php`:
+
+```php
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('backup:run')->daily()->at('02:00');
+Schedule::command('backup:clean')->daily()->at('03:00');
+```
+
+Refer to the [Spatie Laravel Backup docs](https://spatie.be/docs/laravel-backup/v9/introduction) for scheduling options, notification setup, cleanup strategies, and other configuration.
+
 ## Testing
 
 ```bash

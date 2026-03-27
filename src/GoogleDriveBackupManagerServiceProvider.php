@@ -35,8 +35,8 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
             }
 
             $client = new Client;
-            $client->setClientId($config['clientId']);
-            $client->setClientSecret($config['clientSecret']);
+            $client->setClientId($config['client_id']);
+            $client->setClientSecret($config['client_secret']);
             $client->refreshToken($refreshToken);
 
             $service = new Drive($client);
@@ -55,6 +55,6 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
             return $resolver() ?: $config['refreshToken'] ?? null;
         }
 
-        return $config['refreshToken'] ?? null;
+        return $config['refresh_token'] ?? null;
     }
 }

@@ -26,8 +26,8 @@ it('registers package routes', function () {
 it('registers the google storage driver', function () {
     config()->set('filesystems.disks.google', [
         'driver' => 'google',
-        'clientId' => 'test-client-id',
-        'clientSecret' => 'test-client-secret',
+        'client_id' => 'test-client-id',
+        'client_secret' => 'test-client-secret',
         'folder' => '/',
     ]);
 
@@ -48,8 +48,8 @@ it('uses custom refresh token resolver when provided', function () {
 
     config()->set('filesystems.disks.google', [
         'driver' => 'google',
-        'clientId' => 'test-client-id',
-        'clientSecret' => 'test-client-secret',
+        'client_id' => 'test-client-id',
+        'client_secret' => 'test-client-secret',
         'folder' => '/',
     ]);
 
@@ -62,17 +62,17 @@ it('uses custom refresh token resolver when provided', function () {
     expect($resolved)->toBeTrue();
 });
 
-it('falls back to config refreshToken when resolver returns null', function () {
+it('falls back to config refresh_token when resolver returns null', function () {
     config()->set('google-drive-backup-manager.refresh_token_resolver', fn () => null);
 
     config()->set('filesystems.disks.google', [
         'driver' => 'google',
-        'clientId' => 'test-client-id',
-        'clientSecret' => 'test-client-secret',
+        'client_id' => 'test-client-id',
+        'client_secret' => 'test-client-secret',
         'folder' => '/',
     ]);
 
-    // No refreshToken in disk config and resolver returns null
+    // No refresh_token in disk config and resolver returns null
     expect(fn () => Storage::disk('google'))
         ->toThrow(RuntimeException::class, 'Google Drive is not configured');
 });

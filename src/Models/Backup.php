@@ -39,7 +39,7 @@ class Backup extends Model
 
     public static function clearCache(): void
     {
-        Cache::forget(static::cacheKey());
+        Cache::forget(self::cacheKey());
     }
 
     /**
@@ -53,7 +53,7 @@ class Backup extends Model
             return $this->fetchRows();
         }
 
-        return Cache::remember(static::cacheKey(), now()->addMinutes($ttl), fn () => $this->fetchRows());
+        return Cache::remember(self::cacheKey(), now()->addMinutes($ttl), fn () => $this->fetchRows());
     }
 
     /**
@@ -78,7 +78,7 @@ class Backup extends Model
         }
     }
 
-    protected static function cacheKey(): string
+    private static function cacheKey(): string
     {
         return 'google-drive-backup-manager:backups';
     }

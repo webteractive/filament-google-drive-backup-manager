@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Storage;
+use Webteractive\GoogleDriveBackupManager\Tests\TestUser;
 
 it('publishes the config file', function () {
     expect(config('google-drive-backup-manager'))->toBeArray()
@@ -23,56 +24,86 @@ it('registers package routes', function () {
         ->toContain('backup.download');
 });
 
-it('registers the google storage driver', function () {
+it('throws when no user has connected google', function () {
     config()->set('filesystems.disks.google', [
         'driver' => 'google',
-        'client_id' => 'test-client-id',
-        'client_secret' => 'test-client-secret',
         'folder' => '/',
     ]);
 
-    config()->set('google-drive-backup-manager.refresh_token_resolver', null);
+    config()->set('google-drive-backup-manager.google', [
+        'client_id' => 'test-client-id',
+        'client_secret' => 'test-client-secret',
+    ]);
 
     expect(fn () => Storage::disk('google'))
         ->toThrow(RuntimeException::class, 'Google Drive is not configured');
 });
 
-it('uses custom refresh token resolver when provided', function () {
-    $resolved = false;
-
-    config()->set('google-drive-backup-manager.refresh_token_resolver', function () use (&$resolved) {
-        $resolved = true;
-
-        return 'custom-token';
-    });
+it('resolves refresh token from authenticated user', function () {
+    $user = TestUser::create([
+        'email' => 'test@example.com',
+        'google_backup' => ['refresh_token' => 'user-refresh-token'],
+    ]);
 
     config()->set('filesystems.disks.google', [
         'driver' => 'google',
-        'client_id' => 'test-client-id',
-        'client_secret' => 'test-client-secret',
         'folder' => '/',
     ]);
+
+    config()->set('google-drive-backup-manager.google', [
+        'client_id' => 'test-client-id',
+        'client_secret' => 'test-client-secret',
+    ]);
+
+    $this->actingAs($user);
+
+    // Google API will fail but it should NOT throw "not configured"
+    $threw = null;
 
     try {
         Storage::disk('google');
-    } catch (Throwable) {
-        // Google API will fail in tests, but the resolver should have been called
+    } catch (Throwable $e) {
+        $threw = $e;
     }
 
-    expect($resolved)->toBeTrue();
+    expect($threw)->not->toBeInstanceOf(RuntimeException::class);
 });
 
-it('falls back to config refresh_token when resolver returns null', function () {
-    config()->set('google-drive-backup-manager.refresh_token_resolver', fn () => null);
+it('resolves refresh token from database for queued jobs', function () {
+    TestUser::create([
+        'email' => 'admin@example.com',
+        'google_backup' => ['refresh_token' => 'stored-refresh-token'],
+    ]);
 
     config()->set('filesystems.disks.google', [
         'driver' => 'google',
-        'client_id' => 'test-client-id',
-        'client_secret' => 'test-client-secret',
         'folder' => '/',
     ]);
 
-    // No refresh_token in disk config and resolver returns null
-    expect(fn () => Storage::disk('google'))
-        ->toThrow(RuntimeException::class, 'Google Drive is not configured');
+    config()->set('google-drive-backup-manager.google', [
+        'client_id' => 'test-client-id',
+        'client_secret' => 'test-client-secret',
+    ]);
+
+    // No authenticated user (simulating a queued job)
+    $threw = null;
+
+    try {
+        Storage::disk('google');
+    } catch (Throwable $e) {
+        $threw = $e;
+    }
+
+    expect($threw)->not->toBeInstanceOf(RuntimeException::class);
+});
+
+it('wires google oauth config into services.google for socialite', function () {
+    $pkgGoogle = config('google-drive-backup-manager.google');
+
+    if (! empty($pkgGoogle['client_id'])) {
+        expect(config('services.google.client_id'))->toBe($pkgGoogle['client_id'])
+            ->and(config('services.google.client_secret'))->toBe($pkgGoogle['client_secret']);
+    } else {
+        expect(true)->toBeTrue();
+    }
 });

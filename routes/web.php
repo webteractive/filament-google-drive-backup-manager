@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Webteractive\GoogleDriveBackupManager\Http\Controllers\BackupDownloadController;
 use Webteractive\GoogleDriveBackupManager\Http\Controllers\GoogleController;
 
-Route::middleware(['web', 'auth'])->group(function () {
+Route::middleware(config('google-drive-backup-manager.middleware', ['web', 'auth']))->group(function () {
     $basePath = config('google-drive-backup-manager.oauth_base_path', 'google-drive-backup-manager-oauth');
 
     Route::get("{$basePath}/redirect", [GoogleController::class, 'redirect'])

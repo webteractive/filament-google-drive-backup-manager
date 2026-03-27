@@ -3,11 +3,14 @@
 use Webteractive\GoogleDriveBackupManager\Tests\TestUser;
 
 beforeEach(function () {
-    config()->set('services.google', [
+    config()->set('google-drive-backup-manager.google', [
         'client_id' => 'test-client-id',
         'client_secret' => 'test-client-secret',
         'redirect' => 'http://localhost/callback',
     ]);
+
+    // Wire into services.google for Socialite
+    config()->set('services.google', config('google-drive-backup-manager.google'));
 });
 
 it('redirects to google for oauth', function () {

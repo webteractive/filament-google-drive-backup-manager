@@ -15,9 +15,9 @@ class ManageBackups extends ManageRecords
 
     protected function getHeaderActions(): array
     {
-        $googleConfigured = config('services.google.client_id')
-            && config('services.google.client_secret')
-            && config('services.google.redirect');
+        $googleConfigured = config('google-drive-backup-manager.google.client_id')
+            && config('google-drive-backup-manager.google.client_secret')
+            && config('google-drive-backup-manager.google.redirect');
 
         if (! $googleConfigured) {
             return [];

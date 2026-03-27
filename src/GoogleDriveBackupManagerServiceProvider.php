@@ -5,6 +5,7 @@ namespace Webteractive\GoogleDriveBackupManager;
 use Google\Client;
 use Google\Service\Drive;
 use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use League\Flysystem\Filesystem;
 use Masbug\Flysystem\GoogleDriveAdapter;
@@ -25,18 +26,22 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
 
     public function packageBooted(): void
     {
+        $this->configureSocialite();
+
         Storage::extend('google', function ($app, $config) {
-            $refreshToken = $this->resolveRefreshToken($config);
+            $refreshToken = $this->resolveRefreshToken();
 
             if (! $refreshToken) {
                 throw new RuntimeException(
-                    'Google Drive is not configured. Please connect a Google account via the admin panel or set GOOGLE_DRIVE_REFRESH_TOKEN in your environment.'
+                    'Google Drive is not configured. Please connect a Google account via the admin panel.'
                 );
             }
 
+            $google = config('google-drive-backup-manager.google', []);
+
             $client = new Client;
-            $client->setClientId($config['client_id']);
-            $client->setClientSecret($config['client_secret']);
+            $client->setClientId($google['client_id']);
+            $client->setClientSecret($google['client_secret']);
             $client->refreshToken($refreshToken);
 
             $service = new Drive($client);
@@ -47,14 +52,32 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
         });
     }
 
-    protected function resolveRefreshToken(array $config): ?string
+    protected function resolveRefreshToken(): ?string
     {
-        $resolver = config('google-drive-backup-manager.refresh_token_resolver');
+        $user = Auth::user();
 
-        if (is_callable($resolver)) {
-            return $resolver() ?: $config['refreshToken'] ?? null;
+        if ($user && method_exists($user, 'getGoogleToken')) {
+            return $user->getGoogleToken()['refresh_token'] ?? null;
         }
 
-        return $config['refresh_token'] ?? null;
+        // Fallback for queued jobs (no auth user): find any user with a connected token
+        $column = config('google-drive-backup-manager.google_token_column', 'google_backup');
+        $userModel = config('auth.providers.users.model');
+
+        $user = $userModel::whereNotNull($column)->first();
+
+        return $user?->getGoogleToken()['refresh_token'] ?? null;
+    }
+
+    protected function configureSocialite(): void
+    {
+        $google = config('google-drive-backup-manager.google', []);
+
+        if (! empty($google['client_id']) && ! empty($google['client_secret'])) {
+            config()->set('services.google', array_merge(
+                config('services.google', []),
+                $google,
+            ));
+        }
     }
 }

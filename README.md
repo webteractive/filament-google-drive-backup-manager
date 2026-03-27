@@ -26,21 +26,37 @@ php artisan vendor:publish --tag="google-drive-backup-manager-config"
 
 ## Google Drive Setup
 
-Add a `google` disk to your `config/filesystems.php`:
+Add your Google OAuth credentials to the published config file (`config/google-drive-backup-manager.php`):
+
+```php
+'google' => [
+    'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
+    'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
+    'redirect' => env('GOOGLE_DRIVE_REDIRECT_URI'),
+],
+```
+
+Then add a `google` disk to your `config/filesystems.php`:
 
 ```php
 'disks' => [
     'google' => [
         'driver' => 'google',
-        'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
-        'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
-        'refresh_token' => env('GOOGLE_DRIVE_REFRESH_TOKEN'),
         'folder' => env('GOOGLE_DRIVE_FOLDER', '/'),
     ],
 ],
 ```
 
-Then add the corresponding values to your `.env` file.
+Add the corresponding values to your `.env` file:
+
+```env
+GOOGLE_DRIVE_CLIENT_ID=your-client-id
+GOOGLE_DRIVE_CLIENT_SECRET=your-client-secret
+GOOGLE_DRIVE_REDIRECT_URI=https://yourapp.com/google-drive-backup-manager-oauth/callback
+GOOGLE_DRIVE_FOLDER=/
+```
+
+The refresh token is automatically resolved from the user who connected their Google account via the admin panel. No manual token configuration needed.
 
 ## Filament Panel Registration
 
@@ -77,22 +93,9 @@ You can change the gate name in the config:
 'gate' => 'yourCustomGate',
 ```
 
-## Download Route
-
-The plugin requires a named route for downloading backup files. The route receives an encrypted file path. Add it to your routes:
-
-```php
-use Illuminate\Support\Facades\Storage;
-
-Route::get('/backup/download/{path}', function (string $path) {
-    $decryptedPath = decrypt($path);
-    $disk = config('google-drive-backup-manager.disk', 'google');
-
-    return Storage::disk($disk)->download($decryptedPath);
-})->name('backup.download')->middleware('auth');
-```
-
 ## Configuration
+
+All settings are in `config/google-drive-backup-manager.php`:
 
 ```php
 return [
@@ -111,20 +114,26 @@ return [
     // Named route for downloading backups
     'download_route' => 'backup.download',
 
-    // Optional: resolve refresh token dynamically (e.g., per-user)
-    'refresh_token_resolver' => null,
+    // Column on users table for storing Google OAuth tokens
+    'google_token_column' => 'google_backup',
+
+    // Queue name for backup jobs (null = default queue)
+    'queue' => null,
+
+    // Google OAuth credentials (kept within this package's config)
+    'google' => [
+        'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_DRIVE_REDIRECT_URI'),
+    ],
+
+    // Route middleware
+    'middleware' => ['web', 'auth'],
+
+    // Base path for OAuth routes
+    'oauth_base_path' => 'google-drive-backup-manager-oauth',
+
 ];
-```
-
-### Dynamic Refresh Token
-
-If you store Google OAuth tokens per-user, provide a resolver:
-
-```php
-'refresh_token_resolver' => function () {
-    $user = \App\Models\User::where('email', config('app.admin_email'))->first();
-    return $user?->google['refresh_token'] ?? null;
-},
 ```
 
 ## Testing

@@ -80,6 +80,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Google OAuth Credentials
+    |--------------------------------------------------------------------------
+    |
+    | The OAuth credentials used for the Google Drive connection flow.
+    | These are kept within this package's config so they don't conflict
+    | with other Google integrations in your application.
+    |
+    */
+    'google' => [
+        'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_DRIVE_REDIRECT_URI'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Route Middleware
+    |--------------------------------------------------------------------------
+    |
+    | The middleware applied to all package routes (OAuth and download).
+    | Override this to add custom middleware like Sanctum or Filament auth.
+    |
+    */
+    'middleware' => ['web', 'auth'],
+
+    /*
+    |--------------------------------------------------------------------------
     | OAuth Base Path
     |--------------------------------------------------------------------------
     |
@@ -91,23 +118,5 @@ return [
     |
     */
     'oauth_base_path' => 'google-drive-backup-manager-oauth',
-
-    /*
-    |--------------------------------------------------------------------------
-    | Refresh Token Resolver
-    |--------------------------------------------------------------------------
-    |
-    | A callable that resolves the Google Drive refresh token. This allows you
-    | to pull the token from your own storage (e.g. a user's database column)
-    | instead of relying on the environment variable.
-    |
-    | Example:
-    |   'refresh_token_resolver' => function () {
-    |       $user = \App\Models\User::where('email', config('app.admin_email'))->first();
-    |       return $user?->google['refresh_token'] ?? null;
-    |   },
-    |
-    */
-    'refresh_token_resolver' => null,
 
 ];

@@ -79,6 +79,8 @@ class BackupResource extends Resource
                         $disk = config('google-drive-backup-manager.disk', 'google');
                         Storage::disk($disk)->delete($record->path);
 
+                        Backup::clearCache();
+
                         Notification::make()
                             ->success()
                             ->title('Backup deleted')

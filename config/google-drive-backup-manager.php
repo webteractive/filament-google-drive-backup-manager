@@ -119,4 +119,16 @@ return [
     */
     'oauth_base_path' => 'google-drive-backup-manager-oauth',
 
+    /*
+    |--------------------------------------------------------------------------
+    | Cache TTL
+    |--------------------------------------------------------------------------
+    |
+    | How long (in minutes) to cache the backup file listing fetched from
+    | Google Drive. The cache is automatically cleared after a successful
+    | backup or when a backup file is deleted. Set to 0 to disable caching.
+    |
+    */
+    'cache_ttl' => 60,
+
 ];

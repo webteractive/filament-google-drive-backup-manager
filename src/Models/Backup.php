@@ -3,6 +3,7 @@
 namespace Webteractive\GoogleDriveBackupManager\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Number;
 use Sushi\Sushi;
@@ -36,10 +37,29 @@ class Backup extends Model
         return now()->createFromTimestamp($this->last_modified)->diffForHumans();
     }
 
+    public static function clearCache(): void
+    {
+        Cache::forget(static::cacheKey());
+    }
+
     /**
      * @return array<int, array<string, mixed>>
      */
     public function getRows(): array
+    {
+        $ttl = config('google-drive-backup-manager.cache_ttl', 60);
+
+        if ($ttl <= 0) {
+            return $this->fetchRows();
+        }
+
+        return Cache::remember(static::cacheKey(), now()->addMinutes($ttl), fn () => $this->fetchRows());
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchRows(): array
     {
         $disk = config('google-drive-backup-manager.disk', 'google');
 
@@ -56,5 +76,10 @@ class Backup extends Model
         } catch (Throwable) {
             return [];
         }
+    }
+
+    protected static function cacheKey(): string
+    {
+        return 'google-drive-backup-manager:backups';
     }
 }

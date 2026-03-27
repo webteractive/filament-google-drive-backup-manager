@@ -1,7 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
+use Spatie\Backup\Events\BackupWasSuccessful;
 use Webteractive\GoogleDriveBackupManager\Models\Backup;
 
 beforeEach(function () {
@@ -79,4 +81,19 @@ it('returns fresh results after cache is cleared', function () {
     $rows = $backup->getRows();
 
     expect($rows)->toHaveCount(2);
+});
+
+it('clears cache when BackupWasSuccessful event is fired', function () {
+    config()->set('google-drive-backup-manager.cache_ttl', 60);
+
+    Storage::disk('google')->put('backup-2024-01-01.zip', 'content');
+
+    $backup = new Backup;
+    $backup->getRows();
+
+    expect(Cache::has('google-drive-backup-manager:backups'))->toBeTrue();
+
+    Event::dispatch(new BackupWasSuccessful(diskName: 'google', backupName: 'test'));
+
+    expect(Cache::has('google-drive-backup-manager:backups'))->toBeFalse();
 });

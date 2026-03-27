@@ -6,12 +6,15 @@ use Google\Client;
 use Google\Service\Drive;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use League\Flysystem\Filesystem;
 use Masbug\Flysystem\GoogleDriveAdapter;
 use RuntimeException;
+use Spatie\Backup\Events\BackupWasSuccessful;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
+use Webteractive\GoogleDriveBackupManager\Models\Backup;
 
 class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
 {
@@ -27,6 +30,8 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
     public function packageBooted(): void
     {
         $this->configureSocialite();
+
+        Event::listen(BackupWasSuccessful::class, fn () => Backup::clearCache());
 
         Storage::extend('google', function ($app, $config) {
             $refreshToken = $this->resolveRefreshToken();

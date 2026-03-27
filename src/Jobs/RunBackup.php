@@ -5,7 +5,6 @@ namespace Webteractive\GoogleDriveBackupManager\Jobs;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Artisan;
-use Webteractive\GoogleDriveBackupManager\Models\Backup;
 
 class RunBackup implements ShouldQueue
 {
@@ -22,7 +21,5 @@ class RunBackup implements ShouldQueue
             '--no-interaction' => true,
             '--disable-notifications' => true,
         ]));
-
-        Backup::clearCache();
     }
 }

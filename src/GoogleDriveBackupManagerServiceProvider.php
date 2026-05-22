@@ -33,28 +33,31 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
 
         Event::listen(BackupWasSuccessful::class, fn () => Backup::clearCache());
 
-        Storage::extend('google', function ($app, $config) {
-            $refreshToken = $this->resolveRefreshToken();
+        Storage::extend('google', $this->createGoogleDriver(...));
+    }
 
-            if (! $refreshToken) {
-                throw new RuntimeException(
-                    'Google Drive is not configured. Please connect a Google account via the admin panel.'
-                );
-            }
+    public function createGoogleDriver($app, $config): FilesystemAdapter
+    {
+        $refreshToken = $this->resolveRefreshToken();
 
-            $google = config('google-drive-backup-manager.google', []);
+        if (! $refreshToken) {
+            throw new RuntimeException(
+                'Google Drive is not configured. Please connect a Google account via the admin panel.'
+            );
+        }
 
-            $client = new Client;
-            $client->setClientId($google['client_id']);
-            $client->setClientSecret($google['client_secret']);
-            $client->refreshToken($refreshToken);
+        $google = config('google-drive-backup-manager.google', []);
 
-            $service = new Drive($client);
-            $adapter = new GoogleDriveAdapter($service, $config['folder'] ?? '/');
-            $driver = new Filesystem($adapter);
+        $client = new Client;
+        $client->setClientId($google['client_id']);
+        $client->setClientSecret($google['client_secret']);
+        $client->refreshToken($refreshToken);
 
-            return new FilesystemAdapter($driver, $adapter);
-        });
+        $service = new Drive($client);
+        $adapter = new GoogleDriveAdapter($service, $config['folder'] ?? '/');
+        $driver = new Filesystem($adapter);
+
+        return new FilesystemAdapter($driver, $adapter);
     }
 
     protected function resolveRefreshToken(): ?string
@@ -69,9 +72,9 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
         $column = config('google-drive-backup-manager.google_token_column', 'google_backup');
         $userModel = config('auth.providers.users.model');
 
-        $user = $userModel::whereNotNull($column)->first();
+        $fallbackUser = $userModel::whereNotNull($column)->first();
 
-        return $user?->getGoogleToken()['refresh_token'] ?? null;
+        return $fallbackUser?->getGoogleToken()['refresh_token'] ?? null;
     }
 
     protected function configureSocialite(): void

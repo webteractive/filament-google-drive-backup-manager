@@ -49,4 +49,4 @@ vendor/bin/pest --filter="test name"            # Run a single test by name
 
 - PHP 8.4+
 - Filament 4.0+ or 5.0+
-- Laravel 11+ or 12+
+- Laravel 12+ or 13+

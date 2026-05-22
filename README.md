@@ -8,7 +8,7 @@ A [Filament](https://filamentphp.com) plugin for managing [Spatie Laravel Backup
 ## Requirements
 
 - PHP 8.4+
-- Laravel 11+
+- Laravel 12+
 - Filament 4.0+
 - [Spatie Laravel Backup](https://github.com/spatie/laravel-backup) 9.0+
 

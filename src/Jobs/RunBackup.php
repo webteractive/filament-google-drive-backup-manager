@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 use Throwable;
 use Webteractive\GoogleDriveBackupManager\Enums\BackupStatus;
+use Webteractive\GoogleDriveBackupManager\GoogleDriveBackupManagerServiceProvider;
 use Webteractive\GoogleDriveBackupManager\Models\Backup;
 use Webteractive\GoogleDriveBackupManager\Support\BackupMessages;
 
@@ -66,6 +67,13 @@ class RunBackup implements ShouldQueue
 
     private function runBackupCommand(): void
     {
+        // Long-running queue workers (Horizon with --max-time=0) boot the
+        // provider once and snapshot Spatie's source.files/databases config
+        // from settings as they were AT BOOT. Settings saved through the UI
+        // afterwards never reach those workers without this re-apply.
+        app()->getProvider(GoogleDriveBackupManagerServiceProvider::class)
+            ?->applyBackupConfig();
+
         $args = array_filter([
             '--only-db' => $this->onlyDb,
             '--only-to-disk' => config('google-drive-backup-manager.disk', 'gdbm'),

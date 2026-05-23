@@ -69,7 +69,7 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
         $this->registerDisks();
-        $this->configureBackup();
+        $this->applyBackupConfig();
         $this->registerSchedule();
 
         Event::listen(BackupWasSuccessful::class, [RecordBackupOutcome::class, 'handleSuccess']);
@@ -99,6 +99,10 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
             cronKey: 'schedule_cleanup_cron',
             name: 'gdbm:scheduled-cleanup',
             callback: function (): void {
+                // Long-running schedulers share the worker's stale-config
+                // problem — re-resolve settings before each invocation.
+                app()->getProvider(self::class)?->applyBackupConfig();
+
                 // Let Spatie fire CleanupWasSuccessful / CleanupHasFailed —
                 // SendBackupNotifications listens for both and respects the
                 // user's notify_events checklist.
@@ -118,7 +122,10 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
             name: 'gdbm:scheduled-monitor',
             // Let Spatie fire HealthyBackupWasFound / UnhealthyBackupWasFound;
             // we listen for both.
-            callback: fn () => Artisan::call('backup:monitor', ['--no-interaction' => true]),
+            callback: function (): void {
+                app()->getProvider(self::class)?->applyBackupConfig();
+                Artisan::call('backup:monitor', ['--no-interaction' => true]);
+            },
         );
     }
 
@@ -160,7 +167,13 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
         ]);
     }
 
-    protected function configureBackup(): void
+    /**
+     * Write the settings-derived Spatie backup config (destination disk,
+     * source databases + files, cleanup retention, notifications). Re-runs
+     * cheaply on every backup job so long-lived queue workers always reflect
+     * settings saved AFTER the worker booted.
+     */
+    public function applyBackupConfig(): void
     {
         // If the host has explicitly published Spatie's config, treat that as a
         // hard opt-out — don't override anything from our settings table.

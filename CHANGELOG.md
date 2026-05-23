@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-23
+
+### Fixed
+- File-target backups silently came out database-only when settings were saved AFTER a long-running queue worker had booted (the common Horizon `--max-time=0 --max-jobs=0` case). The provider previously wired Spatie's `backup.backup.source.files/databases`, `cleanup.default_strategy.*`, and notification map only inside `packageBooted()`, so workers held a stale snapshot. The settings-derived Spatie config is now re-applied on every `RunBackup` job, every scheduled cleanup, and every scheduled monitor — workers no longer need to be restarted after editing the Files / Databases / Cleanup / Notifications tabs. The renamed entry point is `GoogleDriveBackupManagerServiceProvider::applyBackupConfig()` (was `configureBackup()`).
+
 ## [0.3.1] - 2026-05-23
 
 ### Fixed

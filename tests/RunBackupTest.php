@@ -6,8 +6,10 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Webteractive\GoogleDriveBackupManager\Enums\BackupStatus;
+use Webteractive\GoogleDriveBackupManager\GoogleDriveBackupManagerServiceProvider;
 use Webteractive\GoogleDriveBackupManager\Jobs\RunBackup;
 use Webteractive\GoogleDriveBackupManager\Models\Backup;
+use Webteractive\GoogleDriveBackupManager\Models\Setting;
 
 /**
  * RunBackup shells out to `Artisan::call('backup:run', ...)`. To avoid pulling
@@ -185,6 +187,32 @@ it('skips backup:run when another run already holds the cache key', function () 
     expect($invoked)->toBeFalse()
         ->and($backup->status)->toBe(BackupStatus::Failed)
         ->and(Cache::get(RunBackup::CURRENT_BACKUP_CACHE_KEY))->toBe(999); // not clobbered
+});
+
+it('re-resolves Spatie config from settings at job runtime so stale workers still pick up file_targets', function () {
+    // Simulate "worker booted before user saved file_targets": empty out the
+    // setting and re-trigger config wiring so config('...source.files.include')
+    // starts at the boot-time empty state.
+    Setting::forget('file_targets');
+    app()->getProvider(GoogleDriveBackupManagerServiceProvider::class)->applyBackupConfig();
+    expect(config('backup.backup.source.files.include'))->toBe([]);
+
+    // User saves file_targets via the UI (mid-process — the long-running
+    // worker would NOT pick this up on its own).
+    Setting::set('file_targets', [
+        ['path' => '/tmp/include-me', 'exclude' => []],
+    ]);
+
+    $backup = Backup::query()->create([
+        'disk' => 'gdbm',
+        'status' => BackupStatus::Pending,
+    ]);
+
+    fakeBackupCommand();
+
+    (new RunBackup(backupId: $backup->id))->handle();
+
+    expect(config('backup.backup.source.files.include'))->toBe(['/tmp/include-me']);
 });
 
 it('can be dispatched to a specific queue', function () {

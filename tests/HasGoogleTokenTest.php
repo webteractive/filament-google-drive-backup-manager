@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\DB;
 use Webteractive\GoogleDriveBackupManager\Tests\TestUser;
 
 it('detects when user has a google token', function () {
@@ -41,6 +42,25 @@ it('detects when refresh token is empty', function () {
     ]);
 
     expect($user->hasGoogleToken())->toBeFalse();
+});
+
+it('treats unreadable encrypted google token data as disconnected', function () {
+    $user = TestUser::create([
+        'email' => 'test@example.com',
+        'google_backup' => [
+            'refresh_token' => 'fake-refresh-token',
+            'token' => 'fake-token',
+        ],
+    ]);
+
+    DB::table('users')
+        ->where('id', $user->getKey())
+        ->update(['google_backup' => 'unreadable-encrypted-payload']);
+
+    $user->refresh();
+
+    expect($user->getGoogleToken())->toBeNull()
+        ->and($user->hasGoogleToken())->toBeFalse();
 });
 
 it('can disconnect google account', function () {

@@ -2,6 +2,8 @@
 
 namespace Webteractive\GoogleDriveBackupManager\Concerns;
 
+use Illuminate\Contracts\Encryption\DecryptException;
+
 trait HasGoogleToken
 {
     public function initializeHasGoogleToken(): void
@@ -15,9 +17,9 @@ trait HasGoogleToken
 
     public function hasGoogleToken(): bool
     {
-        $column = $this->googleTokenColumn();
+        $token = $this->getGoogleToken();
 
-        return ! empty($this->{$column}['refresh_token']);
+        return ! empty($token['refresh_token']);
     }
 
     public function disconnectGoogle(): void
@@ -32,7 +34,11 @@ trait HasGoogleToken
     {
         $column = $this->googleTokenColumn();
 
-        return $this->{$column};
+        try {
+            return $this->{$column};
+        } catch (DecryptException) {
+            return null;
+        }
     }
 
     protected function googleTokenColumn(): string

@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Webteractive\GoogleDriveBackupManager\Tests\TestUser;
 
@@ -66,7 +67,8 @@ it('resolves refresh token from authenticated user', function () {
         $threw = $e;
     }
 
-    expect($threw)->not->toBeInstanceOf(RuntimeException::class);
+    expect($threw instanceof RuntimeException && str_contains($threw->getMessage(), 'Google Drive is not configured'))
+        ->toBeFalse();
 });
 
 it('resolves refresh token from database for queued jobs', function () {
@@ -94,7 +96,70 @@ it('resolves refresh token from database for queued jobs', function () {
         $threw = $e;
     }
 
-    expect($threw)->not->toBeInstanceOf(RuntimeException::class);
+    expect($threw instanceof RuntimeException && str_contains($threw->getMessage(), 'Google Drive is not configured'))
+        ->toBeFalse();
+});
+
+it('skips unreadable encrypted google token data when resolving queued job token', function () {
+    $unreadableUser = TestUser::create([
+        'email' => 'broken@example.com',
+        'google_backup' => ['refresh_token' => 'broken-refresh-token'],
+    ]);
+
+    DB::table('users')
+        ->where('id', $unreadableUser->getKey())
+        ->update(['google_backup' => 'unreadable-encrypted-payload']);
+
+    TestUser::create([
+        'email' => 'admin@example.com',
+        'google_backup' => ['refresh_token' => 'stored-refresh-token'],
+    ]);
+
+    config()->set('filesystems.disks.google', [
+        'driver' => 'google',
+        'folder' => '/',
+    ]);
+
+    config()->set('google-drive-backup-manager.google', [
+        'client_id' => 'test-client-id',
+        'client_secret' => 'test-client-secret',
+    ]);
+
+    // No authenticated user (simulating a queued job)
+    $threw = null;
+
+    try {
+        Storage::disk('google');
+    } catch (Throwable $e) {
+        $threw = $e;
+    }
+
+    expect($threw instanceof RuntimeException && str_contains($threw->getMessage(), 'Google Drive is not configured'))
+        ->toBeFalse();
+});
+
+it('throws not configured when queued job token data is unreadable', function () {
+    $user = TestUser::create([
+        'email' => 'broken@example.com',
+        'google_backup' => ['refresh_token' => 'broken-refresh-token'],
+    ]);
+
+    DB::table('users')
+        ->where('id', $user->getKey())
+        ->update(['google_backup' => 'unreadable-encrypted-payload']);
+
+    config()->set('filesystems.disks.google', [
+        'driver' => 'google',
+        'folder' => '/',
+    ]);
+
+    config()->set('google-drive-backup-manager.google', [
+        'client_id' => 'test-client-id',
+        'client_secret' => 'test-client-secret',
+    ]);
+
+    expect(fn () => Storage::disk('google'))
+        ->toThrow(RuntimeException::class, 'Google Drive is not configured');
 });
 
 it('wires google oauth config into services.google for socialite', function () {

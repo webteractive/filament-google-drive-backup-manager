@@ -72,9 +72,17 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
         $column = config('google-drive-backup-manager.google_token_column', 'google_backup');
         $userModel = config('auth.providers.users.model');
 
-        $fallbackUser = $userModel::whereNotNull($column)->first();
+        $fallbackUsers = $userModel::whereNotNull($column)->cursor();
 
-        return $fallbackUser?->getGoogleToken()['refresh_token'] ?? null;
+        foreach ($fallbackUsers as $fallbackUser) {
+            $refreshToken = $fallbackUser->getGoogleToken()['refresh_token'] ?? null;
+
+            if ($refreshToken) {
+                return $refreshToken;
+            }
+        }
+
+        return null;
     }
 
     protected function configureSocialite(): void

@@ -6,6 +6,17 @@ on:
       - main
   pull_request:
 
+# Pass GitHub token to composer so dist downloads aren't rate-limited; force
+# package:discover (post-autoload-dump → @composer run prepare) to use an
+# in-memory cache store, otherwise it tries the default `database` driver
+# and fails with "no such table: cache" since no DB is migrated yet.
+env:
+  COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ secrets.GITHUB_TOKEN }}"}}'
+  CACHE_STORE: array
+  CACHE_DRIVER: array
+  DB_CONNECTION: sqlite
+  DB_DATABASE: ':memory:'
+
 jobs:
   pest:
     runs-on: ubuntu-latest

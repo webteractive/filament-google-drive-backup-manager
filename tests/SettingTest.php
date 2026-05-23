@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Schema;
 use Webteractive\GoogleDriveBackupManager\Models\Setting;
@@ -43,19 +42,29 @@ it('returns default when decryption fails (APP_KEY rotated scenario)', function 
         'value' => 'not-real-ciphertext',
         'encrypted' => true,
     ]);
-    Cache::forget(Setting::CACHE_KEY);
 
     expect(Setting::get('oauth', ['fallback' => true]))->toBe(['fallback' => true]);
 });
 
-it('forget removes the row and busts the cache', function () {
+it('forget removes the row', function () {
     Setting::set('client_id', 'abc');
-    Setting::get('client_id'); // prime cache
 
     Setting::forget('client_id');
 
     expect(Setting::get('client_id'))->toBeNull()
         ->and(Setting::exists('client_id'))->toBeFalse();
+});
+
+it('reads through raw DB deletes without caching stale values', function () {
+    Setting::set('client_id', 'abc');
+    expect(Setting::get('client_id'))->toBe('abc');
+
+    // Mass deletes bypass Eloquent model events. The previous cached
+    // implementation could return the stale value here; the no-cache
+    // implementation must read through.
+    Setting::query()->where('key', 'client_id')->delete();
+
+    expect(Setting::get('client_id'))->toBeNull();
 });
 
 it('exists differentiates "never set" from "unreadable"', function () {
@@ -68,7 +77,6 @@ it('exists differentiates "never set" from "unreadable"', function () {
 
 it('tolerates a missing settings table on read', function () {
     Schema::drop(config('google-drive-backup-manager.settings_table'));
-    Cache::forget(Setting::CACHE_KEY);
 
     expect(Setting::get('client_id'))->toBeNull();
 

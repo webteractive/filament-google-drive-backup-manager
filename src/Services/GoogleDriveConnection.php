@@ -96,6 +96,17 @@ class GoogleDriveConnection
     }
 
     /**
+     * True only when client credentials AND an active OAuth refresh token are
+     * both present. Used by the settings UI to gate every non-OAuth tab —
+     * those tabs only make sense once the user has actually completed the
+     * Google handshake.
+     */
+    public function isReady(): bool
+    {
+        return $this->hasCredentials() && $this->isConnected();
+    }
+
+    /**
      * @return array{client_id: ?string, client_secret: ?string, redirect: string}
      */
     public function getCredentials(): array

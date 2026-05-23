@@ -5,7 +5,6 @@ namespace Webteractive\GoogleDriveBackupManager\Models;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 
@@ -21,28 +20,18 @@ class Setting extends Model
         'encrypted' => 'boolean',
     ];
 
-    public const CACHE_KEY = 'gdbm_settings:all';
-
     public function getTable(): string
     {
         return config('google-drive-backup-manager.settings_table', 'gdbm_settings');
     }
 
-    protected static function booted(): void
-    {
-        static::saved(fn () => Cache::forget(self::CACHE_KEY));
-        static::deleted(fn () => Cache::forget(self::CACHE_KEY));
-    }
-
     public static function get(string $key, mixed $default = null): mixed
     {
-        $rows = self::allCached();
+        $row = self::fetchRow($key);
 
-        if (! array_key_exists($key, $rows)) {
-            return $default;
-        }
-
-        return self::decode($rows[$key]['value'], (bool) $rows[$key]['encrypted'], $default);
+        return $row === null
+            ? $default
+            : self::decode($row['value'], $row['encrypted'], $default);
     }
 
     public static function set(string $key, mixed $value, bool $encrypted = false): self
@@ -68,14 +57,11 @@ class Setting extends Model
     public static function forget(string $key): void
     {
         self::query()->where('key', $key)->delete();
-
-        // Mass deletes don't fire model events, so bust the cache manually.
-        Cache::forget(self::CACHE_KEY);
     }
 
     public static function exists(string $key): bool
     {
-        return array_key_exists($key, self::allCached());
+        return self::fetchRow($key) !== null;
     }
 
     /**
@@ -84,38 +70,53 @@ class Setting extends Model
      */
     public static function getMany(array $keys): array
     {
-        $rows = self::allCached();
-
-        $out = [];
-
-        foreach ($keys as $key) {
-            $out[$key] = array_key_exists($key, $rows)
-                ? self::decode($rows[$key]['value'], (bool) $rows[$key]['encrypted'])
-                : null;
+        if ($keys === []) {
+            return [];
         }
 
-        return $out;
+        try {
+            $rows = self::query()
+                ->whereIn('key', $keys)
+                ->get(['key', 'value', 'encrypted'])
+                ->keyBy('key');
+        } catch (QueryException) {
+            return array_fill_keys($keys, null);
+        }
+
+        $result = [];
+
+        foreach ($keys as $key) {
+            $row = $rows->get($key);
+            $result[$key] = $row === null
+                ? null
+                : self::decode($row->value, (bool) $row->encrypted);
+        }
+
+        return $result;
     }
 
     /**
-     * @return array<string, array{value: ?string, encrypted: bool}>
+     * @return array{value: ?string, encrypted: bool}|null
      */
-    private static function allCached(): array
+    private static function fetchRow(string $key): ?array
     {
-        return Cache::remember(self::CACHE_KEY, now()->addHour(), function (): array {
-            try {
-                return self::query()
-                    ->get(['key', 'value', 'encrypted'])
-                    ->mapWithKeys(fn (self $row) => [$row->key => [
-                        'value' => $row->value,
-                        'encrypted' => (bool) $row->encrypted,
-                    ]])
-                    ->all();
-            } catch (QueryException) {
-                // Table may not exist yet (e.g. during initial migrate).
-                return [];
-            }
-        });
+        try {
+            $row = self::query()
+                ->where('key', $key)
+                ->first(['value', 'encrypted']);
+        } catch (QueryException) {
+            // Table may not exist yet (e.g. during initial migrate).
+            return null;
+        }
+
+        if ($row === null) {
+            return null;
+        }
+
+        return [
+            'value' => $row->value,
+            'encrypted' => (bool) $row->encrypted,
+        ];
     }
 
     private static function decode(?string $raw, bool $encrypted, mixed $default = null): mixed

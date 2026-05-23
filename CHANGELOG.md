@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-23
+
+### Fixed
+- `Setting` model no longer caches the settings array. Previously, any code path that bypassed Eloquent model events (mass delete via `Setting::query()->where(...)->delete()`, raw `DB::table(...)->delete()`, or external SQL) left the cache holding ghost rows, so `Setting::get()` could return stale values long after the row was gone. Reads now go straight to the database, which also removes the latent footgun on Laravel 11+ default `CACHE_STORE=database` installs that hadn't run `php artisan cache:table`.
+
+### Changed
+- Non-OAuth settings tabs (Backup, Databases, Files, Schedule, Cleanup, Notifications) now require both client credentials **and** an active OAuth refresh token to become visible — previously they unlocked as soon as the client ID/secret were saved, before the Google handshake completed. Backed by a new `GoogleDriveConnection::isReady()` (= `hasCredentials() && isConnected()`).
+
 ## [0.3.0] - 2026-05-23
 
 ### Added
@@ -55,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Previous published release. See git history for details prior to this overhaul.
 
-[Unreleased]: https://github.com/webteractive/filament-google-drive-backup-manager/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/webteractive/filament-google-drive-backup-manager/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/webteractive/filament-google-drive-backup-manager/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/webteractive/filament-google-drive-backup-manager/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/webteractive/filament-google-drive-backup-manager/releases/tag/v0.2.0

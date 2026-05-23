@@ -2,6 +2,7 @@
 
 namespace Webteractive\GoogleDriveBackupManager\Filament\Resources\Backups\Pages;
 
+use Closure;
 use Filament\Actions\Action;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Repeater;
@@ -120,6 +121,15 @@ class ManageBackups extends ManageRecords
         return $actions;
     }
 
+    /**
+     * Visibility closure used by every non-OAuth settings tab — they only make
+     * sense once both credentials and an active OAuth connection are present.
+     */
+    private function whenReady(): Closure
+    {
+        return fn (): bool => app(GoogleDriveConnection::class)->isReady();
+    }
+
     private function settingsAction(): Action
     {
         return Action::make('settings')
@@ -207,7 +217,7 @@ class ManageBackups extends ManageRecords
                             ]),
                         Tab::make(self::trans('tabs.backup'))
                             ->icon('heroicon-o-circle-stack')
-                            ->visible(fn (): bool => app(GoogleDriveConnection::class)->hasCredentials())
+                            ->visible($this->whenReady())
                             ->schema([
                                 TextInput::make('backup_folder')
                                     ->label('Folder Name')
@@ -224,7 +234,7 @@ class ManageBackups extends ManageRecords
                             ]),
                         Tab::make(self::trans('tabs.databases'))
                             ->icon('heroicon-o-server-stack')
-                            ->visible(fn (): bool => app(GoogleDriveConnection::class)->hasCredentials())
+                            ->visible($this->whenReady())
                             ->schema([
                                 Repeater::make('backup_database_targets')
                                     ->hiddenLabel()
@@ -253,7 +263,7 @@ class ManageBackups extends ManageRecords
                             ]),
                         Tab::make(self::trans('tabs.files'))
                             ->icon('heroicon-o-folder')
-                            ->visible(fn (): bool => app(GoogleDriveConnection::class)->hasCredentials())
+                            ->visible($this->whenReady())
                             ->schema([
                                 Repeater::make('backup_file_targets')
                                     ->hiddenLabel()
@@ -278,7 +288,7 @@ class ManageBackups extends ManageRecords
                             ]),
                         Tab::make(self::trans('tabs.schedule'))
                             ->icon('heroicon-o-clock')
-                            ->visible(fn (): bool => app(GoogleDriveConnection::class)->hasCredentials())
+                            ->visible($this->whenReady())
                             ->schema([
                                 Section::make('Backup schedule')
                                     ->description('Run a backup automatically using the configured database and file targets.')
@@ -298,7 +308,7 @@ class ManageBackups extends ManageRecords
                             ]),
                         Tab::make(self::trans('tabs.cleanup'))
                             ->icon('heroicon-o-trash')
-                            ->visible(fn (): bool => app(GoogleDriveConnection::class)->hasCredentials())
+                            ->visible($this->whenReady())
                             ->schema([
                                 TextInput::make('cleanup_keep_all_days')
                                     ->label('Keep all backups for (days)')
@@ -341,7 +351,7 @@ class ManageBackups extends ManageRecords
                             ]),
                         Tab::make(self::trans('tabs.notifications'))
                             ->icon('heroicon-o-bell')
-                            ->visible(fn (): bool => app(GoogleDriveConnection::class)->hasCredentials())
+                            ->visible($this->whenReady())
                             ->schema([
                                 TagsInput::make('notify_email_to')
                                     ->label('Email recipients')

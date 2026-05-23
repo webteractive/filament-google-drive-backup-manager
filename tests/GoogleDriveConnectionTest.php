@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Support\Facades\Cache;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Webteractive\GoogleDriveBackupManager\Models\Setting;
 use Webteractive\GoogleDriveBackupManager\Services\GoogleDriveConnection;
@@ -26,7 +25,6 @@ it('detects unreadable oauth payload', function () {
         'value' => 'corrupt-payload',
         'encrypted' => true,
     ]);
-    Cache::forget(Setting::CACHE_KEY);
 
     $connection = app(GoogleDriveConnection::class);
 
@@ -128,4 +126,26 @@ it('setFolder forgets both name and id when given empty', function () {
 
     expect(Setting::exists('folder_name'))->toBeFalse()
         ->and(Setting::exists('folder_id'))->toBeFalse();
+});
+
+it('isReady requires both credentials and an active oauth connection', function () {
+    $connection = app(GoogleDriveConnection::class);
+
+    expect($connection->isReady())->toBeFalse();
+
+    // Credentials alone are not enough — must also be authenticated.
+    Setting::set('client_id', 'cid');
+    Setting::set('client_secret', 'csec', encrypted: true);
+    expect($connection->isReady())->toBeFalse();
+
+    // OAuth alone is not enough either.
+    Setting::forget('client_id');
+    Setting::forget('client_secret');
+    Setting::set('oauth', ['refresh_token' => 'r'], encrypted: true);
+    expect($connection->isReady())->toBeFalse();
+
+    // Both together → ready.
+    Setting::set('client_id', 'cid');
+    Setting::set('client_secret', 'csec', encrypted: true);
+    expect($connection->isReady())->toBeTrue();
 });

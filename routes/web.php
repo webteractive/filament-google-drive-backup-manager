@@ -18,5 +18,9 @@ Route::middleware(config('google-drive-backup-manager.middleware', ['web', 'auth
         ->name('google-drive-backup-manager.google.disconnect');
 
     Route::get('/backup/download/{path}', BackupDownloadController::class)
+        // {path} carries an `encrypt([...])` token — base64 + URL-safe chars
+        // only. Reject anything else at the routing layer so the controller
+        // can assume well-shaped input.
+        ->where('path', '[A-Za-z0-9+/=._\-]+')
         ->name(config('google-drive-backup-manager.download_route', 'backup.download'));
 });

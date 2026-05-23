@@ -1,15 +1,17 @@
 <?php
 
-use Illuminate\Support\Facades\DB;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Storage;
-use Webteractive\GoogleDriveBackupManager\Tests\TestUser;
+use Webteractive\GoogleDriveBackupManager\GoogleDriveBackupManagerServiceProvider;
+use Webteractive\GoogleDriveBackupManager\Models\Setting;
+use Webteractive\GoogleDriveBackupManager\Services\GoogleDriveConnection;
 
-it('publishes the config file', function () {
+it('publishes the config file with sensible defaults', function () {
     expect(config('google-drive-backup-manager'))->toBeArray()
-        ->and(config('google-drive-backup-manager.disk'))->toBe('google')
+        ->and(config('google-drive-backup-manager.disk'))->toBe('gdbm')
         ->and(config('google-drive-backup-manager.gate'))->toBe('viewBackups')
-        ->and(config('google-drive-backup-manager.navigation_group'))->toBe('System')
-        ->and(config('google-drive-backup-manager.google_token_column'))->toBe('google_backup');
+        ->and(config('google-drive-backup-manager.settings_table'))->toBe('gdbm_settings')
+        ->and(config('google-drive-backup-manager.backups_table'))->toBe('gdbm_backups');
 });
 
 it('registers package routes', function () {
@@ -25,150 +27,97 @@ it('registers package routes', function () {
         ->toContain('backup.download');
 });
 
-it('throws when no user has connected google', function () {
-    config()->set('filesystems.disks.google', [
-        'driver' => 'google',
-        'folder' => '/',
-    ]);
+it('binds the GoogleDriveConnection as a singleton', function () {
+    expect(app(GoogleDriveConnection::class))->toBe(app(GoogleDriveConnection::class));
+});
 
-    config()->set('google-drive-backup-manager.google', [
-        'client_id' => 'test-client-id',
-        'client_secret' => 'test-client-secret',
-    ]);
+it('registers the gdbm and gdbm_local disks at runtime', function () {
+    expect(config('filesystems.disks.gdbm'))->toBeArray()
+        ->and(config('filesystems.disks.gdbm.driver'))->toBe('gdbm')
+        ->and(config('filesystems.disks.gdbm_local'))->toBeArray()
+        ->and(config('filesystems.disks.gdbm_local.driver'))->toBe('local');
+});
 
-    expect(fn () => Storage::disk('google'))
+it('throws when resolving the gdbm disk without an active OAuth connection', function () {
+    expect(fn () => Storage::disk('gdbm'))
         ->toThrow(RuntimeException::class, 'Google Drive is not configured');
 });
 
-it('resolves refresh token from authenticated user', function () {
-    $user = TestUser::create([
-        'email' => 'test@example.com',
-        'google_backup' => ['refresh_token' => 'user-refresh-token'],
-    ]);
+it('disables Spatie\'s native notification map (we own all channels)', function () {
+    $map = config('backup.notifications.notifications');
 
-    config()->set('filesystems.disks.google', [
-        'driver' => 'google',
-        'folder' => '/',
-    ]);
-
-    config()->set('google-drive-backup-manager.google', [
-        'client_id' => 'test-client-id',
-        'client_secret' => 'test-client-secret',
-    ]);
-
-    $this->actingAs($user);
-
-    // Google API will fail but it should NOT throw "not configured"
-    $threw = null;
-
-    try {
-        Storage::disk('google');
-    } catch (Throwable $e) {
-        $threw = $e;
+    expect($map)->toBeArray();
+    foreach ($map as $channels) {
+        expect($channels)->toBe([]);
     }
-
-    expect($threw instanceof RuntimeException && str_contains($threw->getMessage(), 'Google Drive is not configured'))
-        ->toBeFalse();
 });
 
-it('resolves refresh token from database for queued jobs', function () {
-    TestUser::create([
-        'email' => 'admin@example.com',
-        'google_backup' => ['refresh_token' => 'stored-refresh-token'],
-    ]);
-
-    config()->set('filesystems.disks.google', [
-        'driver' => 'google',
-        'folder' => '/',
-    ]);
-
-    config()->set('google-drive-backup-manager.google', [
-        'client_id' => 'test-client-id',
-        'client_secret' => 'test-client-secret',
-    ]);
-
-    // No authenticated user (simulating a queued job)
-    $threw = null;
-
-    try {
-        Storage::disk('google');
-    } catch (Throwable $e) {
-        $threw = $e;
-    }
-
-    expect($threw instanceof RuntimeException && str_contains($threw->getMessage(), 'Google Drive is not configured'))
-        ->toBeFalse();
+it('sets backup.backup.name to the current environment when config not published', function () {
+    expect(config('backup.backup.name'))->toBe(app()->environment());
 });
 
-it('skips unreadable encrypted google token data when resolving queued job token', function () {
-    $unreadableUser = TestUser::create([
-        'email' => 'broken@example.com',
-        'google_backup' => ['refresh_token' => 'broken-refresh-token'],
+it('flattens database_targets into Spatie source.databases', function () {
+    Setting::set('database_targets', [
+        ['connection' => 'testing', 'databases' => []],
     ]);
 
-    DB::table('users')
-        ->where('id', $unreadableUser->getKey())
-        ->update(['google_backup' => 'unreadable-encrypted-payload']);
+    // Re-run boot to pick up new settings.
+    app()->getProvider(GoogleDriveBackupManagerServiceProvider::class)
+        ->packageBooted();
 
-    TestUser::create([
-        'email' => 'admin@example.com',
-        'google_backup' => ['refresh_token' => 'stored-refresh-token'],
-    ]);
-
-    config()->set('filesystems.disks.google', [
-        'driver' => 'google',
-        'folder' => '/',
-    ]);
-
-    config()->set('google-drive-backup-manager.google', [
-        'client_id' => 'test-client-id',
-        'client_secret' => 'test-client-secret',
-    ]);
-
-    // No authenticated user (simulating a queued job)
-    $threw = null;
-
-    try {
-        Storage::disk('google');
-    } catch (Throwable $e) {
-        $threw = $e;
-    }
-
-    expect($threw instanceof RuntimeException && str_contains($threw->getMessage(), 'Google Drive is not configured'))
-        ->toBeFalse();
+    expect(config('backup.backup.source.databases'))->toContain('testing');
 });
 
-it('throws not configured when queued job token data is unreadable', function () {
-    $user = TestUser::create([
-        'email' => 'broken@example.com',
-        'google_backup' => ['refresh_token' => 'broken-refresh-token'],
+it('rejects database names that would inject into PDO DSN', function () {
+    Setting::set('database_targets', [
+        ['connection' => 'testing', 'databases' => ['ok_name', 'bad;dsn=injection']],
     ]);
 
-    DB::table('users')
-        ->where('id', $user->getKey())
-        ->update(['google_backup' => 'unreadable-encrypted-payload']);
+    app()->getProvider(GoogleDriveBackupManagerServiceProvider::class)
+        ->packageBooted();
 
-    config()->set('filesystems.disks.google', [
-        'driver' => 'google',
-        'folder' => '/',
-    ]);
+    $configured = config('backup.backup.source.databases');
 
-    config()->set('google-drive-backup-manager.google', [
-        'client_id' => 'test-client-id',
-        'client_secret' => 'test-client-secret',
-    ]);
-
-    expect(fn () => Storage::disk('google'))
-        ->toThrow(RuntimeException::class, 'Google Drive is not configured');
+    expect($configured)->toContain('testing__ok_name')
+        ->and($configured)->not->toContain('testing__bad;dsn=injection');
 });
 
-it('wires google oauth config into services.google for socialite', function () {
-    $pkgGoogle = config('google-drive-backup-manager.google');
+it('overrides Spatie cleanup defaults when cleanup_* settings are set', function () {
+    Setting::set('cleanup_keep_daily_days', 99);
+    Setting::set('cleanup_max_megabytes', 12345);
 
-    if (! empty($pkgGoogle['client_id'])) {
-        expect(config('services.google.client_id'))->toBe($pkgGoogle['client_id'])
-            ->and(config('services.google.client_secret'))->toBe($pkgGoogle['client_secret']);
-    } else {
-        expect(true)->toBeTrue();
-    }
+    app()->getProvider(GoogleDriveBackupManagerServiceProvider::class)
+        ->packageBooted();
+
+    expect(config('backup.cleanup.default_strategy.keep_daily_backups_for_days'))->toBe(99)
+        ->and(config('backup.cleanup.default_strategy.delete_oldest_backups_when_using_more_megabytes_than'))->toBe(12345);
+});
+
+it('explicitly empties source.files.include when no file_targets are configured', function () {
+    Setting::forget('file_targets');
+
+    app()->getProvider(GoogleDriveBackupManagerServiceProvider::class)
+        ->packageBooted();
+
+    // Empty → no files in the zip (DB-only backups), not Spatie's default of base_path().
+    expect(config('backup.backup.source.files.include'))->toBe([]);
+});
+
+it('registers backup and cleanup schedules when their settings are enabled', function () {
+    Setting::set('schedule_backup_enabled', true);
+    Setting::set('schedule_backup_cron', '0 2 * * *');
+    Setting::set('schedule_cleanup_enabled', true);
+    Setting::set('schedule_cleanup_cron', '0 3 * * *');
+
+    app()->getProvider(GoogleDriveBackupManagerServiceProvider::class)
+        ->packageBooted();
+
+    $names = collect(app(Schedule::class)->events())
+        ->map(fn ($event) => $event->description)
+        ->filter()
+        ->values()
+        ->all();
+
+    expect($names)->toContain('gdbm:scheduled-backup')
+        ->toContain('gdbm:scheduled-cleanup');
 });

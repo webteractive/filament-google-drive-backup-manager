@@ -2,10 +2,20 @@
 
 namespace Webteractive\GoogleDriveBackupManager\Tests;
 
+use Filament\Actions\ActionsServiceProvider;
+use Filament\FilamentServiceProvider;
+use Filament\Forms\FormsServiceProvider;
+use Filament\Infolists\InfolistsServiceProvider;
+use Filament\Notifications\NotificationsServiceProvider;
+use Filament\Schemas\SchemasServiceProvider;
+use Filament\Support\SupportServiceProvider;
+use Filament\Tables\TablesServiceProvider;
+use Filament\Widgets\WidgetsServiceProvider;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Socialite\SocialiteServiceProvider;
+use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Webteractive\GoogleDriveBackupManager\GoogleDriveBackupManagerServiceProvider;
 
@@ -23,8 +33,19 @@ class TestCase extends Orchestra
     protected function getPackageProviders($app)
     {
         return [
-            GoogleDriveBackupManagerServiceProvider::class,
+            LivewireServiceProvider::class,
+            SupportServiceProvider::class,
+            FilamentServiceProvider::class,
+            ActionsServiceProvider::class,
+            FormsServiceProvider::class,
+            TablesServiceProvider::class,
+            NotificationsServiceProvider::class,
+            SchemasServiceProvider::class,
+            WidgetsServiceProvider::class,
+            InfolistsServiceProvider::class,
             SocialiteServiceProvider::class,
+            GoogleDriveBackupManagerServiceProvider::class,
+            TestPanelProvider::class,
         ];
     }
 
@@ -48,8 +69,9 @@ class TestCase extends Orchestra
             $table->string('email')->unique();
             $table->string('password')->default('');
             $table->rememberToken();
-            $table->text('google_backup')->nullable();
             $table->timestamps();
         });
+
+        $this->artisan('migrate')->run();
     }
 }

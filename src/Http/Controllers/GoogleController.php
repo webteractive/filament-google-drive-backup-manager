@@ -6,43 +6,61 @@ use Exception;
 use Filament\Notifications\Notification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Laravel\Socialite\Facades\Socialite;
-use Webteractive\GoogleDriveBackupManager\Actions\ConnectGoogleAccount;
 use Webteractive\GoogleDriveBackupManager\Filament\Resources\Backups\BackupResource;
+use Webteractive\GoogleDriveBackupManager\Services\GoogleDriveConnection;
 
 class GoogleController extends Controller
 {
-    public function redirect(): RedirectResponse
+    public function __construct(protected GoogleDriveConnection $connection)
     {
-        return Socialite::driver('google')
-            ->scopes(['https://www.googleapis.com/auth/drive.file'])
-            ->with(['access_type' => 'offline', 'prompt' => 'consent'])
-            ->redirect();
+        // Connecting/disconnecting Google must be gated to the same authority
+        // that manages backups. Without this, any authenticated host-app user
+        // could overwrite the global OAuth token with their own account.
+        $this->middleware(function ($request, $next) {
+            $gate = config('google-drive-backup-manager.gate', 'viewBackups');
+
+            if (! Gate::has($gate) || ! Gate::allows($gate)) {
+                abort(403);
+            }
+
+            return $next($request);
+        });
     }
 
-    public function callback(ConnectGoogleAccount $connectGoogleAccount): RedirectResponse
+    public function redirect(): RedirectResponse
+    {
+        return $this->connection->withSocialiteConfig(fn (): RedirectResponse => Socialite::driver('google')
+            ->scopes(['https://www.googleapis.com/auth/drive.file'])
+            ->with(['access_type' => 'offline', 'prompt' => 'consent'])
+            ->redirect());
+    }
+
+    public function callback(): RedirectResponse
     {
         $backupRoute = $this->backupResourceRoute();
 
         try {
-            $googleUser = Socialite::driver('google')->user();
+            $googleUser = $this->connection->withSocialiteConfig(
+                fn () => Socialite::driver('google')->user(),
+            );
         } catch (Exception) {
             Notification::make()
-                ->title('Google authentication failed. Please try again.')
+                ->title(__('google-drive-backup-manager::google-drive-backup-manager.notifications.google_auth_failed'))
                 ->danger()
                 ->send();
 
             return redirect()->to($backupRoute);
         }
 
-        $user = Auth::user();
-
-        $connectGoogleAccount->handle($user, $googleUser);
+        $this->connection->store($googleUser);
 
         Notification::make()
-            ->title('Google account connected successfully.')
+            ->title(__('google-drive-backup-manager::google-drive-backup-manager.notifications.google_connected_title'))
+            ->body(__('google-drive-backup-manager::google-drive-backup-manager.notifications.google_connected_body'))
             ->success()
+            ->persistent()
             ->send();
 
         return redirect()->to($backupRoute);
@@ -50,11 +68,10 @@ class GoogleController extends Controller
 
     public function disconnect(): RedirectResponse
     {
-        $user = Auth::user();
-        $user->disconnectGoogle();
+        $this->connection->disconnect();
 
         Notification::make()
-            ->title('Google account disconnected.')
+            ->title(__('google-drive-backup-manager::google-drive-backup-manager.notifications.google_disconnected'))
             ->success()
             ->send();
 

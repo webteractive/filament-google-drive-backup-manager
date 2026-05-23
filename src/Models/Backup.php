@@ -2,84 +2,118 @@
 
 namespace Webteractive\GoogleDriveBackupManager\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Number;
-use Sushi\Sushi;
-use Throwable;
+use Webteractive\GoogleDriveBackupManager\Enums\BackupStatus;
+use Webteractive\GoogleDriveBackupManager\Jobs\RunBackup;
 
 /**
- * @property string $name
- * @property string $path
- * @property int $size
- * @property int $last_modified
+ * @property int $id
+ * @property string $disk
+ * @property ?string $path
+ * @property ?string $filename
+ * @property ?string $drive_file_id
+ * @property ?int $triggered_by_user_id
+ * @property BackupStatus $status
+ * @property ?int $size_bytes
+ * @property ?string $error_message
+ * @property ?Carbon $started_at
+ * @property ?Carbon $completed_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  */
 class Backup extends Model
 {
-    use Sushi;
-
-    /**
-     * @var array<string, string>
-     */
-    protected $casts = [
-        'size' => 'integer',
-        'last_modified' => 'integer',
+    protected $fillable = [
+        'disk',
+        'triggered_by_user_id',
+        'path',
+        'filename',
+        'drive_file_id',
+        'status',
+        'size_bytes',
+        'error_message',
+        'started_at',
+        'completed_at',
     ];
 
-    public function getFormattedSizeAttribute(): string
+    protected $casts = [
+        'status' => BackupStatus::class,
+        'size_bytes' => 'integer',
+        'started_at' => 'datetime',
+        'completed_at' => 'datetime',
+    ];
+
+    public function getTable(): string
     {
-        return Number::fileSize($this->size);
+        return config('google-drive-backup-manager.backups_table', 'gdbm_backups');
+    }
+
+    public function getFormattedSizeAttribute(): ?string
+    {
+        return $this->size_bytes ? Number::fileSize($this->size_bytes) : null;
     }
 
     public function getDateAttribute(): string
     {
-        return now()->createFromTimestamp($this->last_modified)->diffForHumans();
+        return ($this->completed_at ?? $this->created_at)->diffForHumans();
     }
 
-    public static function clearCache(): void
+    public function getDriveUrlAttribute(): ?string
     {
-        Cache::forget(self::cacheKey());
+        return $this->drive_file_id
+            ? "https://drive.google.com/file/d/{$this->drive_file_id}/view"
+            : null;
+    }
+
+    public function scopeCompleted(Builder $query): Builder
+    {
+        return $query->where('status', BackupStatus::Completed->value);
+    }
+
+    public function scopeFailed(Builder $query): Builder
+    {
+        return $query->where('status', BackupStatus::Failed->value);
+    }
+
+    public function scopeInProgress(Builder $query): Builder
+    {
+        return $query->whereIn('status', [BackupStatus::Pending->value, BackupStatus::Running->value]);
     }
 
     /**
-     * @return array<int, array<string, mixed>>
+     * @param  array<int, string>|null  $databases  Limit DB dump to these connection names. Null = all configured.
      */
-    public function getRows(): array
+    public static function queueRun(bool $onlyDb = false, ?array $databases = null): self
     {
-        $ttl = config('google-drive-backup-manager.cache_ttl', 60);
+        $record = self::query()->create([
+            'disk' => config('google-drive-backup-manager.disk', 'gdbm'),
+            'triggered_by_user_id' => auth()->id(),
+            'status' => BackupStatus::Pending,
+        ]);
 
-        if ($ttl <= 0) {
-            return $this->fetchRows();
+        $job = new RunBackup(
+            backupId: $record->id,
+            onlyDb: $onlyDb,
+            databases: $databases,
+        );
+
+        if ((bool) Setting::get('jobs_run_sync')) {
+            dispatch_sync($job);
+
+            return $record;
         }
 
-        return Cache::remember(self::cacheKey(), now()->addMinutes($ttl), fn () => $this->fetchRows());
-    }
+        $queue = Setting::get('queue') ?: config('google-drive-backup-manager.queue');
 
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function fetchRows(): array
-    {
-        $disk = config('google-drive-backup-manager.disk', 'google');
-
-        try {
-            $storage = Storage::disk($disk);
-            $files = $storage->allFiles();
-
-            return collect($files)->map(fn (string $file) => [
-                'name' => basename($file),
-                'path' => $file,
-                'size' => $storage->size($file),
-                'last_modified' => $storage->lastModified($file),
-            ])->values()->all();
-        } catch (Throwable) {
-            return [];
+        if ($queue) {
+            $job->onQueue($queue);
         }
-    }
 
-    private static function cacheKey(): string
-    {
-        return 'google-drive-backup-manager:backups';
+        dispatch($job);
+
+        return $record;
     }
 }

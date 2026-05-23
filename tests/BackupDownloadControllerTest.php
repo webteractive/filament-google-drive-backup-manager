@@ -5,76 +5,109 @@ use Illuminate\Support\Facades\Storage;
 use Webteractive\GoogleDriveBackupManager\Tests\TestUser;
 
 beforeEach(function () {
-    Storage::fake('google');
+    // The package now registers the gdbm disk at runtime, but in tests we
+    // swap in an in-memory fake so we don't hit Drive.
+    Storage::fake('gdbm');
+
+    config()->set('google-drive-backup-manager.disk', 'gdbm');
 });
 
-it('requires authentication', function () {
-    $path = encrypt('backups/test.zip');
+function tokenFor(string $path, ?int $userId, int $expiresAt): string
+{
+    return encrypt([
+        'path' => $path,
+        'user_id' => $userId,
+        'expires_at' => $expiresAt,
+    ]);
+}
 
-    $this->get(route('backup.download', ['path' => $path]))
+it('redirects unauthenticated users to login', function () {
+    $token = tokenFor('backups/test.zip', 1, now()->addMinutes(5)->timestamp);
+
+    $this->get(route('backup.download', ['path' => $token]))
         ->assertRedirect(route('login'));
 });
 
-it('downloads a backup file', function () {
-    Storage::disk('google')->put('backups/test.zip', 'file-contents');
+it('forbids when the gate is not defined (fail-closed)', function () {
+    config()->set('google-drive-backup-manager.gate', 'undefined-gate');
 
-    $user = TestUser::create(['email' => 'test@example.com']);
-    $path = encrypt('backups/test.zip');
-
-    $this->actingAs($user)
-        ->get(route('backup.download', ['path' => $path]))
-        ->assertOk()
-        ->assertDownload('test.zip');
-});
-
-it('returns 404 for invalid encrypted path', function () {
-    $user = TestUser::create(['email' => 'test@example.com']);
+    $user = TestUser::create(['email' => 'a@b.test']);
+    Storage::disk('gdbm')->put('backups/test.zip', 'data');
+    $token = tokenFor('backups/test.zip', $user->getKey(), now()->addMinutes(5)->timestamp);
 
     $this->actingAs($user)
-        ->get(route('backup.download', ['path' => 'invalid-encrypted-string']))
-        ->assertNotFound();
-});
-
-it('returns 404 when file does not exist', function () {
-    $user = TestUser::create(['email' => 'test@example.com']);
-    $path = encrypt('backups/nonexistent.zip');
-
-    $this->actingAs($user)
-        ->get(route('backup.download', ['path' => $path]))
-        ->assertNotFound();
-});
-
-it('enforces the gate when defined', function () {
-    Gate::define('viewBackups', fn ($user) => false);
-
-    $user = TestUser::create(['email' => 'test@example.com']);
-    Storage::disk('google')->put('backups/test.zip', 'file-contents');
-    $path = encrypt('backups/test.zip');
-
-    $this->actingAs($user)
-        ->get(route('backup.download', ['path' => $path]))
+        ->get(route('backup.download', ['path' => $token]))
         ->assertForbidden();
 });
 
-it('allows download when gate passes', function () {
-    Gate::define('viewBackups', fn ($user) => true);
+it('forbids when the gate denies', function () {
+    Gate::define('viewBackups', fn () => false);
 
-    $user = TestUser::create(['email' => 'test@example.com']);
-    Storage::disk('google')->put('backups/test.zip', 'file-contents');
-    $path = encrypt('backups/test.zip');
+    $user = TestUser::create(['email' => 'a@b.test']);
+    Storage::disk('gdbm')->put('backups/test.zip', 'data');
+    $token = tokenFor('backups/test.zip', $user->getKey(), now()->addMinutes(5)->timestamp);
 
     $this->actingAs($user)
-        ->get(route('backup.download', ['path' => $path]))
-        ->assertOk()
-        ->assertDownload('test.zip');
+        ->get(route('backup.download', ['path' => $token]))
+        ->assertForbidden();
 });
 
-it('skips gate check when gate is not defined', function () {
-    $user = TestUser::create(['email' => 'test@example.com']);
-    Storage::disk('google')->put('backups/test.zip', 'file-contents');
-    $path = encrypt('backups/test.zip');
+it('forbids when the token belongs to a different user', function () {
+    Gate::define('viewBackups', fn ($user) => $user !== null);
+
+    $owner = TestUser::create(['email' => 'owner@b.test']);
+    $attacker = TestUser::create(['email' => 'attacker@b.test']);
+
+    Storage::disk('gdbm')->put('backups/test.zip', 'data');
+    $token = tokenFor('backups/test.zip', $owner->getKey(), now()->addMinutes(5)->timestamp);
+
+    $this->actingAs($attacker)
+        ->get(route('backup.download', ['path' => $token]))
+        ->assertForbidden();
+});
+
+it('forbids when the token is expired', function () {
+    Gate::define('viewBackups', fn ($user) => $user !== null);
+
+    $user = TestUser::create(['email' => 'a@b.test']);
+    Storage::disk('gdbm')->put('backups/test.zip', 'data');
+    $token = tokenFor('backups/test.zip', $user->getKey(), now()->subMinute()->timestamp);
 
     $this->actingAs($user)
-        ->get(route('backup.download', ['path' => $path]))
-        ->assertOk();
+        ->get(route('backup.download', ['path' => $token]))
+        ->assertForbidden();
+});
+
+it('returns 404 for a malformed token', function () {
+    Gate::define('viewBackups', fn ($user) => $user !== null);
+
+    $user = TestUser::create(['email' => 'a@b.test']);
+
+    $this->actingAs($user)
+        ->get(route('backup.download', ['path' => 'not-a-valid-encryption-blob']))
+        ->assertNotFound();
+});
+
+it('returns 404 when the file is missing on the disk', function () {
+    Gate::define('viewBackups', fn ($user) => $user !== null);
+
+    $user = TestUser::create(['email' => 'a@b.test']);
+    $token = tokenFor('backups/missing.zip', $user->getKey(), now()->addMinutes(5)->timestamp);
+
+    $this->actingAs($user)
+        ->get(route('backup.download', ['path' => $token]))
+        ->assertNotFound();
+});
+
+it('downloads when gate passes, token matches user, and not expired', function () {
+    Gate::define('viewBackups', fn ($user) => $user !== null);
+
+    $user = TestUser::create(['email' => 'a@b.test']);
+    Storage::disk('gdbm')->put('backups/ok.zip', 'data');
+    $token = tokenFor('backups/ok.zip', $user->getKey(), now()->addMinutes(5)->timestamp);
+
+    $this->actingAs($user)
+        ->get(route('backup.download', ['path' => $token]))
+        ->assertOk()
+        ->assertDownload('ok.zip');
 });

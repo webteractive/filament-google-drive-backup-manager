@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-11
+
+### Added
+- **Run Cleanup** header action on the Backups resource — manually triggers the retention cleanup on demand, mirroring the Run Backup action. Respects the `jobs_run_sync` / `queue` settings and shows a confirmation modal since it permanently deletes Drive backups outside the retention window. Only visible once Google Drive is connected.
+- **Row reconciliation** (`ReconcileBackupRows`) — after `backup:clean` deletes files from Drive per the retention strategy, any `gdbm_backups` row whose file no longer exists is dropped so the list reflects what is actually stored. In-progress rows are preserved, and a row is kept if its existence check fails (a transient Drive error must not wipe history). Runs as part of every cleanup, scheduled or manual.
+- **Schedules overview** header action — a modal listing each enabled backup / cleanup / monitor schedule with its cron and next run, sourced from `schedule:list --json` so it always reflects what is actually registered. Hidden when no schedule is enabled.
+
+### Changed
+- The cleanup pipeline (re-resolve config → `backup:clean` → reconcile rows → prune old rows) now lives in a single `RunCleanup` job reused by both the scheduled cleanup and the new manual action, so the two paths can't drift. A non-zero `backup:clean` exit now surfaces as a thrown error (previously swallowed on the scheduled path).
+- The Backups list now opens the **Details** modal on row click instead of navigating to the Drive file, and the Details modal renders as read-only infolist entries (two-column, clickable Drive URL) rather than disabled form fields.
+- **Triggered by** now shows the user's name (via Filament's `HasName` contract or a `name` attribute, resolved against the host's auth model) instead of the raw user id.
+
 ## [0.3.2] - 2026-05-23
 
 ### Fixed

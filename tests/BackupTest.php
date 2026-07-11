@@ -1,5 +1,7 @@
 <?php
 
+use Filament\Models\Contracts\HasName;
+use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Queue;
 use Webteractive\GoogleDriveBackupManager\Enums\BackupStatus;
 use Webteractive\GoogleDriveBackupManager\Jobs\RunBackup;
@@ -92,3 +94,65 @@ it('queueRun records the authenticated user on the triggered_by_user_id column',
 
     expect($record->triggered_by_user_id)->toBe($user->getKey());
 });
+
+it('triggered_by_label reads "Scheduled / CLI" when there is no triggering user', function () {
+    $row = Backup::query()->create([
+        'disk' => 'gdbm',
+        'status' => BackupStatus::Completed,
+        'triggered_by_user_id' => null,
+    ]);
+
+    expect($row->triggered_by_label)->toBe('Scheduled / CLI');
+});
+
+it('triggered_by_label resolves the user name from the configured auth model', function () {
+    $user = TestUser::create(['name' => 'Ada Lovelace', 'email' => 'ada@example.com']);
+
+    $row = Backup::query()->create([
+        'disk' => 'gdbm',
+        'status' => BackupStatus::Completed,
+        'triggered_by_user_id' => $user->getKey(),
+    ]);
+
+    expect($row->triggered_by_label)->toBe('Ada Lovelace');
+});
+
+it('triggered_by_label falls back to "User #id" when the user no longer exists', function () {
+    $row = Backup::query()->create([
+        'disk' => 'gdbm',
+        'status' => BackupStatus::Completed,
+        'triggered_by_user_id' => 9999,
+    ]);
+
+    expect($row->triggered_by_label)->toBe('User #9999');
+});
+
+it('triggered_by_label prefers getFilamentName() when the user implements HasName', function () {
+    config()->set('auth.providers.users.model', BackupTestNamedUser::class);
+
+    $user = BackupTestNamedUser::create(['name' => 'ignored-column', 'email' => 'named@example.com']);
+
+    $row = Backup::query()->create([
+        'disk' => 'gdbm',
+        'status' => BackupStatus::Completed,
+        'triggered_by_user_id' => $user->getKey(),
+    ]);
+
+    expect($row->triggered_by_label)->toBe('Filament Name');
+});
+
+/**
+ * A user model that implements Filament's HasName contract, to prove the
+ * label prefers getFilamentName() over the raw `name` column.
+ */
+class BackupTestNamedUser extends User implements HasName
+{
+    protected $table = 'users';
+
+    protected $fillable = ['name', 'email', 'password'];
+
+    public function getFilamentName(): string
+    {
+        return 'Filament Name';
+    }
+}

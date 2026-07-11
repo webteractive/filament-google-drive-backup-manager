@@ -10,6 +10,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ManageRecords;
 use Filament\Schemas\Components\Actions as SchemaActions;
@@ -17,13 +18,17 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Tables\Table;
+use Illuminate\Support\Carbon;
 use Throwable;
 use Webteractive\GoogleDriveBackupManager\Filament\Resources\Backups\BackupResource;
+use Webteractive\GoogleDriveBackupManager\Jobs\RunCleanup;
 use Webteractive\GoogleDriveBackupManager\Models\Backup;
 use Webteractive\GoogleDriveBackupManager\Models\Setting;
 use Webteractive\GoogleDriveBackupManager\Rules\AbsolutePath;
 use Webteractive\GoogleDriveBackupManager\Rules\CronExpressionRule;
 use Webteractive\GoogleDriveBackupManager\Services\GoogleDriveConnection;
+use Webteractive\GoogleDriveBackupManager\Support\ScheduleSummary;
 
 class ManageBackups extends ManageRecords
 {
@@ -108,6 +113,21 @@ class ManageBackups extends ManageRecords
         '0 2 1 * *' => 'Monthly (1st at 2:00 AM)',
     ];
 
+    /**
+     * ListRecords::makeTable() force-installs a default record URL pointing at
+     * the first view/edit action that has a URL — here that's the "view"
+     * action's Google Drive link — and a default record action that skips any
+     * action with a URL. Both run after Resource::table(), so configuring them
+     * there is overwritten. Override makeTable() to set them last: clicking a
+     * row opens the Details modal and never navigates to Drive.
+     */
+    protected function makeTable(): Table
+    {
+        return parent::makeTable()
+            ->recordAction('details')
+            ->recordUrl(null);
+    }
+
     protected function getHeaderActions(): array
     {
         $actions = [
@@ -116,9 +136,32 @@ class ManageBackups extends ManageRecords
 
         if (app(GoogleDriveConnection::class)->isConnected()) {
             $actions[] = $this->runBackupAction();
+            $actions[] = $this->runCleanupAction();
+        }
+
+        // Only offer the schedules overview when at least one schedule is
+        // actually registered (i.e. enabled with a cron). Hidden otherwise.
+        if ($this->enabledSchedules() !== []) {
+            $actions[] = $this->schedulesAction();
         }
 
         return $actions;
+    }
+
+    /**
+     * The package's enabled schedules, memoised for this request so repeated
+     * Livewire renders don't each shell out to `schedule:list`.
+     *
+     * @var array<int, array{key: string, label: string, cron: string, next: ?Carbon, next_human: ?string}>|null
+     */
+    private ?array $enabledSchedulesCache = null;
+
+    /**
+     * @return array<int, array{key: string, label: string, cron: string, next: ?Carbon, next_human: ?string}>
+     */
+    private function enabledSchedules(): array
+    {
+        return $this->enabledSchedulesCache ??= ScheduleSummary::enabled();
     }
 
     /**
@@ -315,39 +358,43 @@ class ManageBackups extends ManageRecords
                                     ->numeric()
                                     ->minValue(0)
                                     ->placeholder('7')
-                                    ->helperText('Every backup is kept untouched for this many days, regardless of strategy.'),
+                                    ->helperText('Newest backups are kept in full — every one — for this many days. The thinning rules below only apply to backups older than this.'),
                                 TextInput::make('cleanup_keep_daily_days')
                                     ->label('Keep one daily backup for (days)')
                                     ->numeric()
                                     ->minValue(0)
-                                    ->placeholder('16'),
+                                    ->placeholder('16')
+                                    ->helperText('Past the keep-all window, thin down to a single backup per day, up to this many days old.'),
                                 TextInput::make('cleanup_keep_weekly_weeks')
                                     ->label('Keep one weekly backup for (weeks)')
                                     ->numeric()
                                     ->minValue(0)
-                                    ->placeholder('8'),
+                                    ->placeholder('8')
+                                    ->helperText('Past the daily window, thin down to a single backup per week, up to this many weeks old.'),
                                 TextInput::make('cleanup_keep_monthly_months')
                                     ->label('Keep one monthly backup for (months)')
                                     ->numeric()
                                     ->minValue(0)
-                                    ->placeholder('4'),
+                                    ->placeholder('4')
+                                    ->helperText('Past the weekly window, thin down to a single backup per month, up to this many months old.'),
                                 TextInput::make('cleanup_keep_yearly_years')
                                     ->label('Keep one yearly backup for (years)')
                                     ->numeric()
                                     ->minValue(0)
-                                    ->placeholder('2'),
+                                    ->placeholder('2')
+                                    ->helperText('Past the monthly window, thin down to a single backup per year, up to this many years old. Anything older than every window is deleted.'),
                                 TextInput::make('cleanup_max_megabytes')
                                     ->label('Max total size (MB)')
                                     ->numeric()
                                     ->minValue(0)
                                     ->placeholder('5000')
-                                    ->helperText('When the total size of all backups exceeds this, the oldest ones get deleted first.'),
+                                    ->helperText('A hard size ceiling. If all backups on Drive together exceed this, the oldest are deleted first — even ones the rules above would otherwise keep. Leave empty for no size limit.'),
                                 TextInput::make('cleanup_prune_rows_after_days')
                                     ->label('Prune table rows older than (days)')
                                     ->numeric()
                                     ->minValue(0)
                                     ->placeholder('Empty = never')
-                                    ->helperText('Spatie cleans Drive files via its retention strategy above; this prunes our gdbm_backups rows so the table doesn\'t grow forever. Runs as part of the cleanup schedule.'),
+                                    ->helperText('Only affects this backup list, not Drive. After each cleanup, rows whose Drive file was deleted are removed automatically — so you rarely need this. Set it only to also trim settled rows (including failed runs that never produced a file) once they pass this age, keeping the table from growing forever.'),
                             ]),
                         Tab::make(self::trans('tabs.notifications'))
                             ->icon('heroicon-o-bell')
@@ -516,6 +563,68 @@ class ManageBackups extends ManageRecords
                     ->body(self::trans('notifications.backup_queued_body'))
                     ->send();
             });
+    }
+
+    private function runCleanupAction(): Action
+    {
+        return Action::make('runCleanup')
+            ->label(self::trans('actions.run_cleanup'))
+            ->icon('heroicon-o-trash')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->modalHeading(self::trans('actions.run_cleanup'))
+            ->modalDescription(self::trans('notifications.cleanup_confirm_body'))
+            ->modalSubmitActionLabel(self::trans('actions.run'))
+            ->action(function (): void {
+                RunCleanup::queueRun();
+
+                Notification::make()
+                    ->success()
+                    ->title(self::trans('notifications.cleanup_queued_title'))
+                    ->body(self::trans('notifications.cleanup_queued_body'))
+                    ->send();
+            });
+    }
+
+    private function schedulesAction(): Action
+    {
+        return Action::make('schedules')
+            ->label(self::trans('actions.schedules'))
+            ->icon('heroicon-o-calendar-days')
+            ->color('gray')
+            ->modalHeading(self::trans('actions.schedules'))
+            ->modalDescription('When each enabled backup, cleanup, and monitor schedule will next run.')
+            ->modalSubmitAction(false)
+            ->modalCancelActionLabel('Close')
+            ->schema(fn (): array => $this->schedulesSchema());
+    }
+
+    /**
+     * One section per enabled schedule, showing its cron and next run.
+     *
+     * @return array<int, Section>
+     */
+    private function schedulesSchema(): array
+    {
+        return array_map(function (array $task): Section {
+            $next = $task['next'];
+
+            $nextRun = $next instanceof Carbon
+                ? $next->format('M j, Y H:i').($task['next_human'] ? ' ('.$task['next_human'].')' : '')
+                : 'Not scheduled — cron expression is invalid';
+
+            return Section::make($task['label'])
+                ->compact()
+                ->columns(2)
+                ->schema([
+                    TextEntry::make("cron_{$task['key']}")
+                        ->label('Cron')
+                        ->state($task['cron']),
+                    TextEntry::make("next_{$task['key']}")
+                        ->label('Next run')
+                        ->state($nextRun),
+                ]);
+        }, $this->enabledSchedules());
     }
 
     /**

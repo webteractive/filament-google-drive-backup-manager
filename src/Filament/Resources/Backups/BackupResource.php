@@ -7,10 +7,10 @@ use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\TextInput;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Enums\RecordActionsPosition;
@@ -88,10 +88,6 @@ class BackupResource extends Resource
                 TextColumn::make('filename')
                     ->label(self::trans('columns.file'))
                     ->description(fn (Backup $record): ?string => self::fullDrivePath($record))
-                    ->copyable()
-                    ->copyableState(fn (Backup $record): ?string => self::fullDrivePath($record))
-                    ->copyMessage('Drive path copied')
-                    ->tooltip('Click to copy the full path')
                     ->searchable(query: fn ($query, string $search) => $query
                         ->where('path', 'like', "%{$search}%")
                         ->orWhere('filename', 'like', "%{$search}%"))
@@ -276,10 +272,11 @@ class BackupResource extends Resource
     }
 
     /**
-     * Build the schema shown inside the Details modal — a list of key/value
-     * rows summarising what the backup did and where it went. We use plain
-     * read-only TextInputs so we don't pull in the Infolist namespace just
-     * for static display.
+     * Build the schema shown inside the Details modal — a read-only key/value
+     * description list summarising what the backup did and where it went.
+     * These are infolist entries (not form fields): the modal only displays
+     * data, so entries render as clean label/value pairs rather than editable
+     * inputs, and the Drive URL becomes a real link.
      *
      * @return array<int, mixed>
      */
@@ -297,7 +294,7 @@ class BackupResource extends Resource
             'Duration' => ($record->started_at && $record->completed_at)
                 ? ((int) $record->started_at->diffInSeconds($record->completed_at)).'s'
                 : null,
-            'Triggered by' => $record->triggered_by_user_id ? "User #{$record->triggered_by_user_id}" : 'Scheduled / CLI',
+            'Triggered by' => $record->triggered_by_label,
             'Created' => $record->created_at?->format('M j, Y H:i:s'),
         ];
 
@@ -308,23 +305,35 @@ class BackupResource extends Resource
                 continue;
             }
 
-            $components[] = TextInput::make(Str::slug($label, '_'))
+            $entry = TextEntry::make(Str::slug($label, '_'))
                 ->label($label)
-                ->default((string) $value)
-                ->readOnly()
-                ->dehydrated(false);
+                ->state((string) $value)
+                ->copyable();
+
+            // Drive path / URL / file ID are long — give them the full row.
+            if (str_starts_with($label, 'Drive')) {
+                $entry->columnSpanFull();
+            }
+
+            if ($label === 'Drive URL') {
+                $entry->url(Str::sanitizeUrl((string) $value))
+                    ->openUrlInNewTab();
+            }
+
+            $components[] = $entry;
         }
 
         if ($record->error_message) {
-            $components[] = Textarea::make('error_message')
+            $components[] = TextEntry::make('error_message')
                 ->label('Error')
-                ->default($record->error_message)
-                ->readOnly()
-                ->dehydrated(false)
-                ->rows(6);
+                ->state($record->error_message)
+                ->color('danger')
+                ->columnSpanFull();
         }
 
-        return $components;
+        return [
+            Grid::make(2)->schema($components),
+        ];
     }
 
     private static function fullDrivePath(Backup $record): ?string

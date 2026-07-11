@@ -2,6 +2,8 @@
 
 namespace Webteractive\GoogleDriveBackupManager\Models;
 
+use Filament\Models\Contracts\HasName;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -66,6 +68,55 @@ class Backup extends Model
         return $this->drive_file_id
             ? "https://drive.google.com/file/d/{$this->drive_file_id}/view"
             : null;
+    }
+
+    /**
+     * Human label for who kicked off the run. Resolves the triggering user
+     * against the host app's configured auth model — the package can't assume
+     * a User class or column, so it prefers Filament's HasName contract, then a
+     * `name` attribute, and falls back to the id when the user can't be
+     * resolved (deleted account, no configured model). Scheduled/CLI runs have
+     * no user.
+     */
+    public function getTriggeredByLabelAttribute(): string
+    {
+        if (! $this->triggered_by_user_id) {
+            return 'Scheduled / CLI';
+        }
+
+        $user = $this->triggeringUser();
+
+        if ($user === null) {
+            return "User #{$this->triggered_by_user_id}";
+        }
+
+        if ($user instanceof HasName) {
+            return $user->getFilamentName();
+        }
+
+        $name = $user->getAttribute('name');
+
+        return is_string($name) && $name !== '' ? $name : "User #{$this->triggered_by_user_id}";
+    }
+
+    /**
+     * The user who triggered this run, resolved against the host's configured
+     * auth provider model. Null for scheduled/CLI runs or when unresolvable.
+     */
+    public function triggeringUser(): ?Authenticatable
+    {
+        if (! $this->triggered_by_user_id) {
+            return null;
+        }
+
+        /** @var class-string<Authenticatable>|null $userClass */
+        $userClass = config('auth.providers.users.model');
+
+        if (! is_string($userClass) || ! class_exists($userClass)) {
+            return null;
+        }
+
+        return $userClass::query()->find($this->triggered_by_user_id);
     }
 
     public function scopeCompleted(Builder $query): Builder

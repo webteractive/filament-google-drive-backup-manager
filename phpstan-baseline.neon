@@ -1,28 +1,58 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^Trait Webteractive\\GoogleDriveBackupManager\\Concerns\\HasGoogleToken is used zero times and is not analysed\.$#'
-			identifier: trait.unused
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$disk\.$#'
+			identifier: property.notFound
 			count: 1
-			path: src/Concerns/HasGoogleToken.php
+			path: src/Filament/Resources/Backups/BackupResource.php
 
 		-
-			message: '#^Call to an undefined method Illuminate\\Foundation\\Auth\\User\:\:disconnectGoogle\(\)\.$#'
-			identifier: method.notFound
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$path\.$#'
+			identifier: property.notFound
 			count: 1
-			path: src/Filament/Resources/Backups/Pages/ManageBackups.php
+			path: src/Filament/Resources/Backups/BackupResource.php
 
 		-
-			message: '#^Call to an undefined method Illuminate\\Foundation\\Auth\\User\:\:hasGoogleToken\(\)\.$#'
-			identifier: method.notFound
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$status\.$#'
+			identifier: property.notFound
 			count: 1
-			path: src/Filament/Resources/Backups/Pages/ManageBackups.php
+			path: src/Filament/Resources/Backups/BackupResource.php
 
 		-
-			message: '#^Call to an undefined method Illuminate\\Foundation\\Auth\\User\:\:disconnectGoogle\(\)\.$#'
+			message: '#^Anonymous function never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Filament/Resources/Backups/BackupResource.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Support\\Carbon\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Filament/Resources/Backups/BackupResource.php
+
+		-
+			message: '#^Expression on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.expr
+			count: 1
+			path: src/Filament/Widgets/BackupStatsWidget.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Support\\Carbon\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Filament/Widgets/BackupStatsWidget.php
+
+		-
+			message: '#^Parameter \#4 \$data of class Google\\Http\\MediaFileUpload constructor expects string, null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Filesystem/GoogleDriveAdapter.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Support\\ServiceProvider\:\:applyBackupConfig\(\)\.$#'
 			identifier: method.notFound
 			count: 1
-			path: src/Http/Controllers/GoogleController.php
+			path: src/GoogleDriveBackupManagerServiceProvider.php
 
 		-
 			message: '#^Call to an undefined method Laravel\\Socialite\\Contracts\\Provider\:\:scopes\(\)\.$#'
@@ -31,7 +61,67 @@ parameters:
 			path: src/Http/Controllers/GoogleController.php
 
 		-
-			message: '#^Parameter \#2 \$googleUser of method Webteractive\\GoogleDriveBackupManager\\Actions\\ConnectGoogleAccount\:\:handle\(\) expects Laravel\\Socialite\\Two\\User, Laravel\\Socialite\\Contracts\\User given\.$#'
-			identifier: argument.type
+			message: '#^Call to an undefined method Illuminate\\Support\\ServiceProvider\:\:applyBackupConfig\(\)\.$#'
+			identifier: method.notFound
 			count: 1
-			path: src/Http/Controllers/GoogleController.php
+			path: src/Jobs/RunBackup.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Support\\ServiceProvider\:\:applyBackupConfig\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Jobs/RunCleanup.php
+
+		-
+			message: '#^Call to function is_array\(\) with array\{check\: string, message\: string\} will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Listeners/SendBackupNotifications.php
+
+		-
+			message: '#^Offset ''check'' on array\{check\: string, message\: string\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Listeners/SendBackupNotifications.php
+
+		-
+			message: '#^Offset ''message'' on array\{check\: string, message\: string\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Listeners/SendBackupNotifications.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Webteractive\\GoogleDriveBackupManager\\Models\\Backup\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Listeners/SendBackupNotifications.php
+
+		-
+			message: '#^Access to an undefined property Webteractive\\GoogleDriveBackupManager\\Models\\Setting\:\:\$encrypted\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/Setting.php
+
+		-
+			message: '#^Access to an undefined property Webteractive\\GoogleDriveBackupManager\\Models\\Setting\:\:\$value\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/Setting.php
+
+		-
+			message: '#^Access to an undefined property Laravel\\Socialite\\Contracts\\User\:\:\$expiresIn\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/GoogleDriveConnection.php
+
+		-
+			message: '#^Access to an undefined property Laravel\\Socialite\\Contracts\\User\:\:\$refreshToken\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/GoogleDriveConnection.php
+
+		-
+			message: '#^Access to an undefined property Laravel\\Socialite\\Contracts\\User\:\:\$token\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/GoogleDriveConnection.php

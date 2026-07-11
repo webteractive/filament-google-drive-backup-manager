@@ -521,20 +521,7 @@ class SendBackupNotifications
      */
     private function resolveTriggeringUser(?Backup $row): ?Authenticatable
     {
-        $userId = $row?->triggered_by_user_id;
-
-        if (! $userId) {
-            return null;
-        }
-
-        /** @var class-string|null $userClass */
-        $userClass = config('auth.providers.users.model');
-
-        if (! $userClass || ! class_exists($userClass)) {
-            return null;
-        }
-
-        return $userClass::query()->find($userId);
+        return $row?->triggeringUser();
     }
 
     /**

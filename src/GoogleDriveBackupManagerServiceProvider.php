@@ -26,7 +26,7 @@ use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Webteractive\GoogleDriveBackupManager\Console\UpgradeFromV02Command;
 use Webteractive\GoogleDriveBackupManager\Filesystem\GoogleDriveAdapter;
-use Webteractive\GoogleDriveBackupManager\Jobs\PruneBackupRows;
+use Webteractive\GoogleDriveBackupManager\Jobs\RunCleanup;
 use Webteractive\GoogleDriveBackupManager\Listeners\RecordBackupOutcome;
 use Webteractive\GoogleDriveBackupManager\Listeners\SendBackupNotifications;
 use Webteractive\GoogleDriveBackupManager\Models\Backup;
@@ -98,22 +98,12 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
             enabledKey: 'schedule_cleanup_enabled',
             cronKey: 'schedule_cleanup_cron',
             name: 'gdbm:scheduled-cleanup',
-            callback: function (): void {
-                // Long-running schedulers share the worker's stale-config
-                // problem — re-resolve settings before each invocation.
-                app()->getProvider(self::class)?->applyBackupConfig();
-
-                // Let Spatie fire CleanupWasSuccessful / CleanupHasFailed —
-                // SendBackupNotifications listens for both and respects the
-                // user's notify_events checklist.
-                Artisan::call('backup:clean', ['--no-interaction' => true]);
-
-                // Drive files were just pruned per Spatie's retention; now
-                // clear out our DB rows older than the configured window so
-                // gdbm_backups doesn't grow without bound. No-op if the
-                // user hasn't set cleanup_prune_rows_after_days.
-                (new PruneBackupRows)->handle();
-            },
+            // RunCleanup owns the whole pipeline (re-resolve config → Spatie
+            // backup:clean → prune settled rows). Run it inline here so the
+            // scheduled and manual "Run Cleanup" paths share one source of
+            // truth. It re-applies config itself — long-running schedulers
+            // otherwise share the worker's stale-config problem.
+            callback: fn () => (new RunCleanup)->handle(),
         );
 
         $this->scheduleTask(

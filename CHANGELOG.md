@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-13
+
+### Fixed
+- Health-check monitor (`backup:monitor`) watched the wrong location. It used Spatie's vendor default (the `local` disk under `APP_NAME`), but backups are written to the `gdbm` disk inside a folder named after the environment — so the monitor found no backups and falsely fired `UnhealthyBackupWasFound`. `applyBackupConfig()` now also sets `backup.monitor_backups` to watch the actual destination disk(s) under the environment name, keeping monitor and destination in lockstep. The host opt-out (a published `config/backup.php`) still short-circuits this.
+
 ## [0.4.0] - 2026-07-11
 
 ### Added
@@ -80,7 +85,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Previous published release. See git history for details prior to this overhaul.
 
-[Unreleased]: https://github.com/webteractive/filament-google-drive-backup-manager/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/webteractive/filament-google-drive-backup-manager/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/webteractive/filament-google-drive-backup-manager/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/webteractive/filament-google-drive-backup-manager/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/webteractive/filament-google-drive-backup-manager/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/webteractive/filament-google-drive-backup-manager/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/webteractive/filament-google-drive-backup-manager/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/webteractive/filament-google-drive-backup-manager/releases/tag/v0.2.0

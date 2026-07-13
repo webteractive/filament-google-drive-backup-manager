@@ -215,6 +215,18 @@ it('re-resolves Spatie config from settings at job runtime so stale workers stil
     expect(config('backup.backup.source.files.include'))->toBe(['/tmp/include-me']);
 });
 
+it('points the health-check monitor at the destination disk under the environment name', function () {
+    app()->getProvider(GoogleDriveBackupManagerServiceProvider::class)->applyBackupConfig();
+
+    $monitor = config('backup.monitor_backups');
+
+    expect($monitor)->toHaveCount(1)
+        ->and($monitor[0]['name'])->toBe(app()->environment())
+        ->and($monitor[0]['disks'])->toContain('gdbm')
+        ->and($monitor[0]['disks'])->toBe(config('backup.backup.destination.disks'))
+        ->and($monitor[0]['health_checks'])->not->toBeEmpty();
+});
+
 it('can be dispatched to a specific queue', function () {
     Queue::fake();
 

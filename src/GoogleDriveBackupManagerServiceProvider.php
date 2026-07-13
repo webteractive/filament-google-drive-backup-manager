@@ -22,6 +22,8 @@ use Spatie\Backup\Notifications\Notifications\CleanupHasFailedNotification;
 use Spatie\Backup\Notifications\Notifications\CleanupWasSuccessfulNotification;
 use Spatie\Backup\Notifications\Notifications\HealthyBackupWasFoundNotification;
 use Spatie\Backup\Notifications\Notifications\UnhealthyBackupWasFoundNotification;
+use Spatie\Backup\Tasks\Monitor\HealthChecks\MaximumAgeInDays;
+use Spatie\Backup\Tasks\Monitor\HealthChecks\MaximumStorageInMegabytes;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Webteractive\GoogleDriveBackupManager\Console\UpgradeFromV02Command;
@@ -203,8 +205,34 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
             Config::set('backup.backup.source.files.exclude', $excludePaths);
         }
 
+        $this->configureMonitor();
         $this->configureCleanup();
         $this->configureNotifications();
+    }
+
+    /**
+     * Point Spatie's health-check monitor at the disk(s) and name we actually
+     * write backups to. Spatie's vendor default monitors the `local` disk
+     * under APP_NAME — but our backups land on the destination disk(s) inside
+     * a folder named after the environment (see backup.backup.name above), so
+     * without this override `backup:monitor` looks in the wrong place, finds
+     * nothing, and falsely fires UnhealthyBackupWasFound. Reusing the just-set
+     * destination disks keeps the monitor and the destination in lockstep.
+     */
+    protected function configureMonitor(): void
+    {
+        $disks = array_values((array) config('backup.backup.destination.disks', ['gdbm']));
+
+        $healthChecks = config('backup.monitor_backups.0.health_checks', [
+            MaximumAgeInDays::class => 1,
+            MaximumStorageInMegabytes::class => 5000,
+        ]);
+
+        Config::set('backup.monitor_backups', [[
+            'name' => $this->app->environment(),
+            'disks' => $disks,
+            'health_checks' => $healthChecks,
+        ]]);
     }
 
     /**

@@ -211,17 +211,24 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
     }
 
     /**
-     * Point Spatie's health-check monitor at the disk(s) and name we actually
-     * write backups to. Spatie's vendor default monitors the `local` disk
-     * under APP_NAME — but our backups land on the destination disk(s) inside
-     * a folder named after the environment (see backup.backup.name above), so
-     * without this override `backup:monitor` looks in the wrong place, finds
-     * nothing, and falsely fires UnhealthyBackupWasFound. Reusing the just-set
-     * destination disks keeps the monitor and the destination in lockstep.
+     * Point Spatie's health-check monitor at the disk we actually write
+     * backups to. Spatie's vendor default monitors the `local` disk under
+     * APP_NAME, but our backups land on the Drive disk inside a folder named
+     * after the environment (see backup.backup.name above), so without this
+     * override `backup:monitor` looks in the wrong place, finds nothing, and
+     * falsely fires UnhealthyBackupWasFound.
+     *
+     * We deliberately monitor ONLY the Drive disk — not the full
+     * `backup.backup.destination.disks` list. applyBackupConfig() *appends*
+     * `gdbm` to Spatie's default (`['local']`), leaving `local` in place so we
+     * don't clobber any other Spatie backup setups. But package backups run
+     * with `--only-to-disk=gdbm` (see RunBackup), so `local` never receives a
+     * backup. Monitoring it would perpetually report "no backups → unhealthy"
+     * even when the Drive backups are perfectly healthy.
      */
     protected function configureMonitor(): void
     {
-        $disks = array_values((array) config('backup.backup.destination.disks', ['gdbm']));
+        $disks = [config('google-drive-backup-manager.disk', 'gdbm')];
 
         $healthChecks = config('backup.monitor_backups.0.health_checks', [
             MaximumAgeInDays::class => 1,

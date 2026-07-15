@@ -103,6 +103,26 @@ it('explicitly empties source.files.include when no file_targets are configured'
     expect(config('backup.backup.source.files.include'))->toBe([]);
 });
 
+it('monitors only the Drive disk, not the appended local destination', function () {
+    // Reproduce Spatie's vendor default so the append path runs exactly as in
+    // production, where destination.disks starts as ['local'].
+    config()->set('backup.backup.destination.disks', ['local']);
+
+    app()->getProvider(GoogleDriveBackupManagerServiceProvider::class)
+        ->packageBooted();
+
+    // Spatie's default `local` disk stays in the destination list (so we don't
+    // clobber other backup setups)...
+    expect(config('backup.backup.destination.disks'))->toContain('local')
+        ->toContain('gdbm');
+
+    // ...but the monitor must watch ONLY the Drive disk, because package
+    // backups run with --only-to-disk=gdbm and `local` never receives one.
+    // Monitoring `local` would perpetually fire UnhealthyBackupWasFound.
+    expect(config('backup.monitor_backups.0.disks'))->toBe(['gdbm'])
+        ->and(config('backup.monitor_backups.0.name'))->toBe(app()->environment());
+});
+
 it('registers backup and cleanup schedules when their settings are enabled', function () {
     Setting::set('schedule_backup_enabled', true);
     Setting::set('schedule_backup_cron', '0 2 * * *');

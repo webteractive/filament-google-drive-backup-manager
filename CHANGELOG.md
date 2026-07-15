@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-15
+
+### Fixed
+- Health-check monitor still fired a false `UnhealthyBackupWasFound` after 0.4.1. That release pointed `backup.monitor_backups` at the full `backup.backup.destination.disks` list, but `applyBackupConfig()` *appends* `gdbm` to Spatie's default (`['local']`) rather than replacing it — so the monitor watched both `local` and `gdbm`. Package backups run with `--only-to-disk=gdbm`, so the `local` disk never receives a backup and the monitor perpetually reported "no backups of this application at all". `configureMonitor()` now watches only the Drive disk (`google-drive-backup-manager.disk`), keeping the monitor aligned with where backups are actually written.
+
 ## [0.4.1] - 2026-07-13
 
 ### Fixed

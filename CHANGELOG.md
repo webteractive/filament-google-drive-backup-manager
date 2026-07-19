@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-07-19
+
+### Fixed
+- Long-lived queue workers kept failing every backup with `401 Invalid Credentials` even right after reconnecting a Google account. Laravel's `FilesystemManager` caches each resolved disk for the life of the process, so a Horizon worker (`--max-time=0`) reused the `gdbm` disk — and the OAuth access token minted once at worker boot — indefinitely. Once that token expired (~1h) or the refresh token rotated (user reconnected), the cached client kept sending the stale token. `applyBackupConfig()` (already run at the start of every `RunBackup` / `RunCleanup` / monitor run) now calls `Storage::forgetDisk()` so the disk is rebuilt with a freshly minted access token on every run. Web requests were unaffected because they boot a fresh process — only the persistent worker held the stale disk.
+- `makeDriveService()` ignored the result of the refresh-token exchange. `refreshToken()` does not throw on failure — it returns an array with an `error` key (e.g. `invalid_grant` when the refresh token is revoked, expired after 7 days on an unpublished OAuth app, or was issued for different client credentials) — so a dead connection surfaced only as an opaque `401 Invalid Credentials` on the next Drive call. It now inspects the response and throws a clear "the stored Google account must be reconnected" error instead.
+
 ## [0.4.2] - 2026-07-15
 
 ### Fixed

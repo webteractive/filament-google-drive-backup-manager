@@ -1,5 +1,9 @@
 <?php
 
+use Google\Client;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Psr7\Response;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Webteractive\GoogleDriveBackupManager\Models\Setting;
 use Webteractive\GoogleDriveBackupManager\Services\GoogleDriveConnection;
@@ -148,4 +152,33 @@ it('isReady requires both credentials and an active oauth connection', function 
     Setting::set('client_id', 'cid');
     Setting::set('client_secret', 'csec', encrypted: true);
     expect($connection->isReady())->toBeTrue();
+});
+
+it('surfaces a clear reconnect error when the refresh-token exchange fails', function () {
+    Setting::set('client_id', 'cid');
+    Setting::set('client_secret', 'csec', encrypted: true);
+    Setting::set('oauth', ['refresh_token' => 'revoked'], encrypted: true);
+
+    // Drive a real Google client whose token endpoint returns invalid_grant —
+    // the shape Google sends for a revoked/expired refresh token.
+    $connection = new class extends GoogleDriveConnection
+    {
+        protected function newGoogleClient(): Client
+        {
+            $client = parent::newGoogleClient();
+            $client->setHttpClient(new GuzzleHttp\Client([
+                'handler' => HandlerStack::create(new MockHandler([
+                    new Response(400, [], json_encode(['error' => 'invalid_grant'])),
+                ])),
+                'http_errors' => false,
+            ]));
+
+            return $client;
+        }
+    };
+
+    // Without the guard this returns a Drive service that 401s cryptically on
+    // the first call; with it, the failure is named and points at reconnecting.
+    expect(fn () => $connection->makeDriveService())
+        ->toThrow(RuntimeException::class, 'reconnect');
 });

@@ -196,14 +196,44 @@ class GoogleDriveConnection
             throw new RuntimeException('Google Drive is not connected.');
         }
 
+        $client = $this->newGoogleClient();
+
+        // refreshToken() exchanges the stored refresh token for a fresh access
+        // token via an HTTP call to Google. It does NOT throw on failure — it
+        // returns an array with an `error` key (e.g. invalid_grant when the
+        // refresh token was revoked, expired after 7 days on an unpublished
+        // OAuth app, or was issued for different client credentials). Without
+        // this guard the failure is swallowed and every subsequent Drive call
+        // dies with an opaque `401 Invalid Credentials`, which reads as a
+        // transient auth glitch rather than "the connection is dead".
+        $token = $client->refreshToken($this->getRefreshToken());
+
+        if (! isset($token['access_token'])) {
+            $error = is_string($token['error'] ?? null)
+                ? $token['error']
+                : 'unknown_error';
+
+            throw new RuntimeException(
+                "Google Drive authentication failed ({$error}). The stored Google account must be reconnected from the admin panel."
+            );
+        }
+
+        return new Drive($client);
+    }
+
+    /**
+     * Build a Google API client seeded with the stored OAuth client
+     * credentials. Isolated so tests can drive it with a mocked HTTP client.
+     */
+    protected function newGoogleClient(): Client
+    {
         $credentials = $this->getCredentials();
 
         $client = new Client;
         $client->setClientId((string) $credentials['client_id']);
         $client->setClientSecret((string) $credentials['client_secret']);
-        $client->refreshToken($this->getRefreshToken());
 
-        return new Drive($client);
+        return $client;
     }
 
     /**

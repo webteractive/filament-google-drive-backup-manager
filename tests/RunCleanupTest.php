@@ -95,6 +95,13 @@ it('prunes settled rows older than the configured window after cleaning', functi
 });
 
 it('reconciles rows against the disk after cleaning, dropping ones whose file is gone', function () {
+    // RunCleanup->applyBackupConfig() now forgets the cached gdbm disk each run
+    // (so long-lived workers rebuild a fresh Google client). A Storage::fake()
+    // instance is registered via set() and wouldn't survive that forget, so
+    // back the disk with a real local driver on the same root — the reconcile
+    // step then rebuilds an equivalent disk from config, mirroring production.
+    $root = storage_path('framework/testing/disks/gdbm');
+    config(['filesystems.disks.gdbm' => ['driver' => 'local', 'root' => $root, 'throw' => false]]);
     Storage::fake('gdbm');
     fakeCleanCommand();
 

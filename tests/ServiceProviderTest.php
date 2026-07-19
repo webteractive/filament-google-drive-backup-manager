@@ -123,6 +123,27 @@ it('monitors only the Drive disk, not the appended local destination', function 
         ->and(config('backup.monitor_backups.0.name'))->toBe(app()->environment());
 });
 
+it('drops the cached gdbm disk on every config re-apply so long-lived workers rebuild a fresh token', function () {
+    $provider = app()->getProvider(GoogleDriveBackupManagerServiceProvider::class);
+    $provider->packageBooted();
+
+    // Simulate what a long-running Horizon worker holds after its first backup:
+    // a resolved gdbm disk cached in the FilesystemManager. Its Google access
+    // token was minted once, at build time.
+    Storage::fake('gdbm');
+    expect(Storage::disk('gdbm'))->not->toBeNull();
+
+    // Re-applying config is what every worker run does (RunBackup / RunCleanup /
+    // monitor). It must forget the cached disk so the next resolve rebuilds a
+    // fresh Google client and mints a fresh access token.
+    $provider->applyBackupConfig();
+
+    // With no connected account in the test env, the rebuilt driver throws —
+    // proving the stale fake was forgotten rather than reused.
+    expect(fn () => Storage::disk('gdbm'))
+        ->toThrow(RuntimeException::class, 'Google Drive is not configured');
+});
+
 it('registers backup and cleanup schedules when their settings are enabled', function () {
     Setting::set('schedule_backup_enabled', true);
     Setting::set('schedule_backup_cron', '0 2 * * *');

@@ -167,6 +167,21 @@ class GoogleDriveBackupManagerServiceProvider extends PackageServiceProvider
      */
     public function applyBackupConfig(): void
     {
+        // Laravel's FilesystemManager caches each resolved disk for the life of
+        // the process. A long-running queue worker therefore keeps reusing the
+        // Google client built on its FIRST backup — including the OAuth access
+        // token minted once at that moment. Once that token expires (~1h) or the
+        // refresh token rotates (user reconnects a Google account), the cached
+        // client keeps sending the stale token and every Drive call 401s.
+        //
+        // This method runs at the start of every worker run (RunBackup /
+        // RunCleanup / monitor), so forget the disk here: the next
+        // Storage::disk() call rebuilds it via createGoogleDriver(), minting a
+        // fresh access token. Runs before the opt-out below because the stale
+        // token is a problem regardless of whether the host publishes Spatie's
+        // own config.
+        Storage::forgetDisk(config('google-drive-backup-manager.disk', 'gdbm'));
+
         // If the host has explicitly published Spatie's config, treat that as a
         // hard opt-out — don't override anything from our settings table.
         if (file_exists(config_path('backup.php'))) {
